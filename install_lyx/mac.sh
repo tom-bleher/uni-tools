@@ -99,6 +99,7 @@ cat > "$LYX_DIR/preferences" << 'EOF'
 Format 38
 
 \bind_file "user"
+\gui_language english
 
 #
 # MISC SECTION ######################################
@@ -353,5 +354,6 @@ echo "  1. Open LyX (first time: right-click > Open to bypass Gatekeeper)"
 echo "  2. Run Tools > Reconfigure, then restart LyX"
 echo "  3. Cmd+N creates Hebrew RTL documents with David CLM"
 echo "  4. F12 toggles Hebrew/English (keep OS keyboard on English)"
+echo "     On laptops: you may need Fn+F12 if F12 is mapped to a media key"
 echo "  5. File paths must not contain Hebrew characters"
 echo ""
