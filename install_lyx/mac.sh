@@ -1,45 +1,25 @@
 #!/bin/bash
 #
-# install-lyx-hebrew.sh
-# Installs LyX on macOS with full Hebrew + XeLaTeX support.
-# Based on the Madlyx guide by Kali (Oct 2025).
+# mac.sh — Install LyX on macOS (arm/Intel) with Hebrew + XeLaTeX support
+# Based on the Madlyx guide by Kali (Oct 2025)
 #
-# What this script does:
-#   1. Installs MacTeX (TeX distribution with XeLaTeX) via Homebrew
-#   2. Installs LyX via Homebrew
-#   3. Downloads and installs Culmus Hebrew fonts
-#   4. Configures LyX preferences for Hebrew (RTL, visual cursor, keyboard map)
-#   5. Sets up F12 shortcut to toggle Hebrew/English
-#   6. Creates default document template with Hebrew + David CLM font
+# Installs: MacTeX, LyX, Culmus Hebrew fonts
+# Configures: Hebrew RTL, David CLM fonts, F12 language toggle, XeTeX output
 #
-# Prerequisites: Homebrew must be installed (https://brew.sh)
-#
-# Usage:
-#   chmod +x install-lyx-hebrew.sh
-#   ./install-lyx-hebrew.sh
+# Prerequisites: Homebrew (https://brew.sh)
+# Usage: chmod +x mac.sh && ./mac.sh
 #
 
 set -e
 
-# ─────────────────────────────────────────────────────────
-# Colors for output
-# ─────────────────────────────────────────────────────────
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()  { echo -e "${BLUE}[INFO]${NC} $1"; }
 ok()    { echo -e "${GREEN}[OK]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
-error() { echo -e "${RED}[ERROR]${NC} $1"; }
+fail()  { echo -e "${RED}[ERROR]${NC} $1"; }
 
-LYX_CONFIG_DIR="$HOME/Library/Application Support/LyX-2.4"
+LYX_DIR="$HOME/Library/Application Support/LyX-2.4"
 
-# ─────────────────────────────────────────────────────────
-# Step 0: Check prerequisites
-# ─────────────────────────────────────────────────────────
 echo ""
 echo "=============================================="
 echo "  LyX Hebrew Installer for macOS"
@@ -47,120 +27,77 @@ echo "  Based on the Madlyx guide by Kali"
 echo "=============================================="
 echo ""
 
+# ── Prerequisites ─────────────────────────────────────
+
 if ! command -v brew &>/dev/null; then
-    error "Homebrew is not installed. Install it from https://brew.sh"
+    fail "Homebrew is not installed. Install it from https://brew.sh"
     exit 1
 fi
 ok "Homebrew found"
 
-if ! command -v python3 &>/dev/null; then
-    warn "Python3 not found. LyX needs Python for some operations."
-    warn "Install it with: xcode-select --install"
-fi
+# ── Step 1: MacTeX ────────────────────────────────────
 
-# ─────────────────────────────────────────────────────────
-# Step 1: Install MacTeX
-# ─────────────────────────────────────────────────────────
-info "Step 1/6: Installing MacTeX (this is ~5 GB and may take a while)..."
-
-if command -v xelatex &>/dev/null || [ -f /Library/TeX/texbin/xelatex ]; then
-    ok "MacTeX/XeLaTeX already installed: $(xelatex --version 2>/dev/null | head -1 || /Library/TeX/texbin/xelatex --version 2>/dev/null | head -1)"
+info "Step 1/5: MacTeX..."
+if [ -f /Library/TeX/texbin/xelatex ]; then
+    ok "MacTeX already installed"
 else
+    info "Installing MacTeX (~6 GB download, requires sudo)..."
     brew install --cask mactex
-    # Refresh PATH to pick up TeX binaries
     eval "$(/usr/libexec/path_helper)" 2>/dev/null
-    if command -v xelatex &>/dev/null || [ -f /Library/TeX/texbin/xelatex ]; then
-        ok "MacTeX installed successfully"
-    else
-        warn "MacTeX installed but xelatex not yet on PATH."
-        warn "You may need to restart your terminal or run: eval \"\$(/usr/libexec/path_helper)\""
-    fi
+    [ -f /Library/TeX/texbin/xelatex ] && ok "MacTeX installed" \
+        || warn "MacTeX installed but xelatex not on PATH. Restart your terminal."
 fi
 
-# ─────────────────────────────────────────────────────────
-# Step 2: Install LyX
-# ─────────────────────────────────────────────────────────
-info "Step 2/6: Installing LyX..."
+# ── Step 2: LyX ──────────────────────────────────────
 
+info "Step 2/5: LyX..."
 if [ -d "/Applications/LyX.app" ]; then
-    ok "LyX already installed at /Applications/LyX.app"
+    ok "LyX already installed"
 else
     brew install --cask lyx
-    if [ -d "/Applications/LyX.app" ]; then
-        ok "LyX installed successfully"
-    else
-        error "LyX installation failed"
-        exit 1
-    fi
+    [ -d "/Applications/LyX.app" ] && ok "LyX installed" \
+        || { fail "LyX installation failed"; exit 1; }
 fi
 
-# ─────────────────────────────────────────────────────────
-# Step 3: Install Culmus Hebrew fonts
-# ─────────────────────────────────────────────────────────
-info "Step 3/6: Installing Culmus Hebrew fonts..."
+# ── Step 3: Culmus Hebrew fonts ──────────────────────
 
+info "Step 3/5: Culmus Hebrew fonts..."
 if fc-list 2>/dev/null | grep -qi "David CLM"; then
     ok "Culmus fonts already installed"
 else
     CULMUS_TMP=$(mktemp -d)
-    CULMUS_URL="https://sourceforge.net/projects/culmus/files/culmus/0.140/culmus-0.140.tar.gz/download"
-
-    info "Downloading Culmus fonts from SourceForge..."
-    curl -L -o "$CULMUS_TMP/culmus.tar.gz" "$CULMUS_URL" 2>/dev/null
-
-    info "Extracting fonts..."
+    info "Downloading Culmus 0.140..."
+    curl -sL -o "$CULMUS_TMP/culmus.tar.gz" \
+        "https://sourceforge.net/projects/culmus/files/culmus/0.140/culmus-0.140.tar.gz/download"
     tar xzf "$CULMUS_TMP/culmus.tar.gz" -C "$CULMUS_TMP"
 
     mkdir -p "$HOME/Library/Fonts"
-
-    info "Installing font files to ~/Library/Fonts/..."
-    cp "$CULMUS_TMP"/culmus-0.140/DavidCLM-*.otf \
-       "$CULMUS_TMP"/culmus-0.140/FrankRuehlCLM-*.otf \
-       "$CULMUS_TMP"/culmus-0.140/MiriamCLM-*.otf \
-       "$CULMUS_TMP"/culmus-0.140/MiriamMonoCLM-*.ttf \
-       "$CULMUS_TMP"/culmus-0.140/SimpleCLM-*.ttf \
-       "$CULMUS_TMP"/culmus-0.140/NachlieliCLM-*.otf \
-       "$CULMUS_TMP"/culmus-0.140/AharoniCLM-*.otf \
-       "$HOME/Library/Fonts/"
-
+    cp "$CULMUS_TMP"/culmus-0.140/{David,FrankRuehl,Miriam,Nachlieli,Aharoni}CLM-*.otf \
+       "$CULMUS_TMP"/culmus-0.140/{MiriamMono,Simple}CLM-*.ttf \
+       "$HOME/Library/Fonts/" 2>/dev/null
+    # Also copy any remaining .otf/.ttf CLM fonts
+    cp "$CULMUS_TMP"/culmus-0.140/*CLM*.otf "$CULMUS_TMP"/culmus-0.140/*CLM*.ttf \
+       "$HOME/Library/Fonts/" 2>/dev/null || true
     rm -rf "$CULMUS_TMP"
 
     FONT_COUNT=$(ls "$HOME"/Library/Fonts/*CLM* 2>/dev/null | wc -l | tr -d ' ')
     ok "Installed $FONT_COUNT Culmus font files"
 fi
 
-# ─────────────────────────────────────────────────────────
-# Step 4: Wait for LyX config directory to exist
-# ─────────────────────────────────────────────────────────
-info "Step 4/6: Setting up LyX configuration directory..."
+# ── Step 4: LyX preferences + keybindings ────────────
 
-# LyX creates its config dir on first launch or during brew install.
-# If it doesn't exist yet, create the minimal structure.
-if [ ! -d "$LYX_CONFIG_DIR" ]; then
-    warn "LyX config directory not found. Creating it..."
-    mkdir -p "$LYX_CONFIG_DIR"
-fi
+info "Step 4/5: LyX configuration..."
+mkdir -p "$LYX_DIR/bind" "$LYX_DIR/templates"
 
-mkdir -p "$LYX_CONFIG_DIR/bind"
-mkdir -p "$LYX_CONFIG_DIR/templates"
+# Back up existing files
+for f in preferences bind/user.bind; do
+    [ -f "$LYX_DIR/$f" ] && cp "$LYX_DIR/$f" "$LYX_DIR/$f.bak.$(date +%s)" 2>/dev/null
+done
 
-ok "Config directory ready: $LYX_CONFIG_DIR"
-
-# ─────────────────────────────────────────────────────────
-# Step 5: Write LyX preferences (per Madlyx guide)
-# ─────────────────────────────────────────────────────────
-info "Step 5/6: Writing LyX preferences and keybindings..."
-
-# Back up existing preferences if present
-if [ -f "$LYX_CONFIG_DIR/preferences" ]; then
-    cp "$LYX_CONFIG_DIR/preferences" "$LYX_CONFIG_DIR/preferences.backup.$(date +%Y%m%d%H%M%S)"
-    warn "Existing preferences backed up"
-fi
-
-cat > "$LYX_CONFIG_DIR/preferences" << 'PREFS_EOF'
+# Preferences — only non-default settings (matches LyX 2.4.4 on macOS)
+cat > "$LYX_DIR/preferences" << 'EOF'
 Format 38
 
-# Bind file - load user.bind which includes Mac base bindings + Hebrew shortcuts
 \bind_file "user"
 
 #
@@ -168,134 +105,67 @@ Format 38
 #
 
 \path_prefix "/Library/TeX/texbin:/usr/texbin:/opt/homebrew/bin:/opt/local/bin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin"
-\serverpipe "~/Library/Application Support/LyX-2.4/.lyxpipe"
+\sort_layouts true
+\kbmap true
+\kbmap_secondary "hebrew"
+\preview no_math
+\preview_scale_factor 0.8
 
 #
 # SCREEN & FONTS SECTION ############################
 #
 
-# Screen fonts - David CLM for Hebrew display in LyX GUI
+\cursor_follows_scrollbar true
+\scroll_below_document true
 \screen_font_roman "David CLM"
 \screen_font_sans "Simple CLM"
 \screen_font_typewriter "Miriam Mono CLM"
-
-\open_buffers_in_tabs false
-\mac_like_cursor_movement true
-
-# Instant preview: No math (don't render math as preview images)
-\preview no_math
-
-# Scroll wheel zoom with Ctrl (Madlyx guide, page 15)
-\scroll_wheel_zoom "ctrl"
-
-#
-# EDITING SECTION ###################################
-#
-
-# Cursor movement: Visual (Madlyx guide, page 15)
-\visual_cursor true
-
-# Cursor follows scrollbar
-\cursor_follows_scrollbar true
-
-# Scroll below document end
-\scroll_below_document true
-
-# Sort environments alphabetically (Madlyx guide, page 16)
-\sort_layouts true
-
-# Group environments by category
-\group_layouts true
+\screen_font_sizes 5 7 8 9 10 12 14.4 17.26 20.74 24.88
+\open_buffers_in_tabs true
 
 #
 # LANGUAGE SUPPORT SECTION ##########################
 #
 
-# Language package: Automatic (Madlyx guide, page 15)
-\language_package_selection 0
-
-# Set language globally (Madlyx guide, page 15)
-\language_global_options true
-
-# Auto begin (Madlyx guide, page 15)
-\language_auto_begin true
-
-# Auto end (Madlyx guide, page 15)
-\language_auto_end true
-
-# Mark foreign language (Madlyx guide, page 15)
-\mark_foreign_language true
-
-# Language command
-\language_command_begin "\selectlanguage{$$lang}"
-
-# Do not follow OS keyboard - use F12 to toggle inside LyX
-\respect_os_kbd_language false
+\spellcheck_continuously false
+\visual_cursor true
+\language_custom_package ""
 
 #
-# KEYBOARD SECTION ##################################
+# 2nd MISC SUPPORT SECTION ##########################
 #
 
-# Use keyboard map (Madlyx guide, page 15)
-\kbmap true
-
-# Primary: null (Madlyx guide, page 15)
-\kbmap_primary ""
-
-# Secondary: hebrew (Madlyx guide, page 15)
-\kbmap_secondary "hebrew"
-
-#
-# TEMPLATE SECTION ##################################
-#
-
-\template_path "~/Library/Application Support/LyX-2.4/templates"
-
-# Default output format for non-TeX font documents (XeTeX PDF)
-\default_otf_view_format "pdf5"
-
-#
-# SPELLCHECKER SECTION ##############################
-#
-
-\spellchecker "native"
-PREFS_EOF
+\scroll_wheel_zoom ctrl
+\default_otf_view_format pdf5
+EOF
 
 ok "Preferences written"
 
-# ─── Write user.bind (keybindings) ─────────────────────
-
-if [ -f "$LYX_CONFIG_DIR/bind/user.bind" ]; then
-    cp "$LYX_CONFIG_DIR/bind/user.bind" "$LYX_CONFIG_DIR/bind/user.bind.backup.$(date +%Y%m%d%H%M%S)"
-fi
-
-cat > "$LYX_CONFIG_DIR/bind/user.bind" << 'BIND_EOF'
-## user.bind
-## Configured per the Madlyx guide (by Kali)
-## Mac-adapted: uses "mac" base bindings
+# Keybindings — F12 for Hebrew (Madlyx guide, page 16)
+cat > "$LYX_DIR/bind/user.bind" << 'EOF'
+## user.bind — Hebrew keybindings (Madlyx guide)
+## Keep OS keyboard on English. Use F12 to toggle Hebrew inside LyX.
 
 Format 5
 
-# Include Mac default bindings as base
 \bind_file "mac"
 
-# F12 toggles Hebrew language (Madlyx guide, page 16)
-# IMPORTANT: Keep OS keyboard on English at all times.
-# Use F12 to switch between Hebrew and English *within LyX*.
-# Never use Alt+Shift to switch language.
-\bind "F12"                    "language hebrew"
-\bind "S-F12"                  "language english"
-BIND_EOF
+\bind "F12"    "language hebrew"
+\bind "S-F12"  "language english"
+EOF
 
 ok "Keybindings written (F12 = Hebrew, Shift+F12 = English)"
 
-# ─────────────────────────────────────────────────────────
-# Step 6: Create Hebrew document templates
-# ─────────────────────────────────────────────────────────
-info "Step 6/6: Creating Hebrew document templates..."
+# ── Step 5: Hebrew document templates ─────────────────
 
-# This is the LYX_DOCUMENT content shared by both templates
-LYX_DOC_HEADER='#LyX 2.4 created this file. For more info see https://www.lyx.org/
+info "Step 5/5: Hebrew document templates..."
+
+# Shared document header for templates
+write_lyx_template() {
+    local file="$1"
+    local body="$2"
+    cat > "$file" << 'HEADER'
+#LyX 2.4 created this file. For more info see https://www.lyx.org/
 \lyxformat 620
 \begin_document
 \begin_header
@@ -386,31 +256,26 @@ LYX_DOC_HEADER='#LyX 2.4 created this file. For more info see https://www.lyx.or
 \html_be_strict false
 \docbook_table_output 0
 \docbook_mathml_prefix 1
-\end_header'
+\end_header
+HEADER
+    echo "" >> "$file"
+    echo "$body" >> "$file"
+}
 
-# ─── defaults.lyx (used by Cmd+N for new documents) ────
-
-cat > "$LYX_CONFIG_DIR/templates/defaults.lyx" << DEFAULTS_EOF
-${LYX_DOC_HEADER}
-
-\begin_body
+# defaults.lyx — used by Cmd+N for new documents
+write_lyx_template "$LYX_DIR/templates/defaults.lyx" '\begin_body
 
 \begin_layout Standard
 
 \end_layout
 
 \end_body
-\end_document
-DEFAULTS_EOF
+\end_document'
 
-ok "defaults.lyx created (new documents will default to Hebrew RTL)"
+ok "defaults.lyx created (Cmd+N defaults to Hebrew RTL)"
 
-# ─── Hebrew_Article.lyx template (for File > New from Template) ──
-
-cat > "$LYX_CONFIG_DIR/templates/Hebrew_Article.lyx" << TEMPLATE_EOF
-${LYX_DOC_HEADER}
-
-\begin_body
+# Hebrew_Article.lyx — template with Title/Author
+write_lyx_template "$LYX_DIR/templates/Hebrew_Article.lyx" '\begin_body
 
 \begin_layout Title
 
@@ -425,71 +290,41 @@ ${LYX_DOC_HEADER}
 \end_layout
 
 \end_body
-\end_document
-TEMPLATE_EOF
+\end_document'
 
 ok "Hebrew_Article.lyx template created"
 
-# ─────────────────────────────────────────────────────────
-# Verification
-# ─────────────────────────────────────────────────────────
+# ── Verification ──────────────────────────────────────
+
 echo ""
 echo "=============================================="
 echo "  Verification"
 echo "=============================================="
 
-# Check XeLaTeX
 eval "$(/usr/libexec/path_helper)" 2>/dev/null
 export PATH="/Library/TeX/texbin:$PATH"
 
-if command -v xelatex &>/dev/null; then
-    ok "XeLaTeX: $(xelatex --version 2>/dev/null | head -1)"
-else
-    warn "XeLaTeX not found on PATH (restart terminal after MacTeX install)"
-fi
+command -v xelatex &>/dev/null \
+    && ok "XeLaTeX: $(xelatex --version 2>/dev/null | head -1)" \
+    || warn "XeLaTeX not on PATH (restart terminal after MacTeX install)"
 
-# Check polyglossia and bidi
 if command -v kpsewhich &>/dev/null; then
-    if kpsewhich polyglossia.sty &>/dev/null; then
-        ok "polyglossia package: available"
-    else
-        warn "polyglossia package: NOT FOUND"
-    fi
-    if kpsewhich bidi.sty &>/dev/null; then
-        ok "bidi (RTL) package: available"
-    else
-        warn "bidi (RTL) package: NOT FOUND"
-    fi
+    kpsewhich polyglossia.sty &>/dev/null && ok "polyglossia: available" || warn "polyglossia: NOT FOUND"
+    kpsewhich bidi.sty &>/dev/null && ok "bidi (RTL): available" || warn "bidi (RTL): NOT FOUND"
 fi
 
-# Check LyX
-if [ -d "/Applications/LyX.app" ]; then
-    ok "LyX: installed at /Applications/LyX.app"
-else
-    warn "LyX: not found in /Applications"
-fi
+[ -d "/Applications/LyX.app" ] && ok "LyX: /Applications/LyX.app" || warn "LyX: not found"
+fc-list 2>/dev/null | grep -qi "David CLM" && ok "David CLM: installed" || warn "David CLM: not found by fc-list"
 
-# Check fonts
-if fc-list 2>/dev/null | grep -qi "David CLM"; then
-    ok "David CLM font: installed"
-else
-    warn "David CLM font: not detected by fc-list (may still work via Font Book)"
-fi
-
-# Check config files
-for f in "preferences" "bind/user.bind" "templates/defaults.lyx" "templates/Hebrew_Article.lyx"; do
-    if [ -f "$LYX_CONFIG_DIR/$f" ]; then
-        ok "Config: $f"
-    else
-        warn "Missing: $f"
-    fi
+for f in preferences bind/user.bind templates/defaults.lyx templates/Hebrew_Article.lyx; do
+    [ -f "$LYX_DIR/$f" ] && ok "$f" || warn "Missing: $f"
 done
 
-# Quick XeTeX compilation test
+# Hebrew XeTeX compilation test
 if command -v xelatex &>/dev/null && fc-list 2>/dev/null | grep -qi "David CLM"; then
     info "Running Hebrew XeTeX compilation test..."
     TEST_DIR=$(mktemp -d)
-    cat > "$TEST_DIR/test.tex" << 'TEX_EOF'
+    cat > "$TEST_DIR/test.tex" << 'TEX'
 \documentclass{article}
 \usepackage{polyglossia}
 \setdefaultlanguage{hebrew}
@@ -501,30 +336,22 @@ if command -v xelatex &>/dev/null && fc-list 2>/dev/null | grep -qi "David CLM";
 שלום עולם!
 \end{hebrew}
 \end{document}
-TEX_EOF
-    if xelatex -interaction=nonstopmode -output-directory="$TEST_DIR" "$TEST_DIR/test.tex" &>/dev/null; then
-        ok "Hebrew XeTeX compilation test: PASSED"
-    else
-        warn "Hebrew XeTeX compilation test: FAILED (check XeTeX and font installation)"
-    fi
+TEX
+    xelatex -interaction=nonstopmode -output-directory="$TEST_DIR" "$TEST_DIR/test.tex" &>/dev/null \
+        && ok "Hebrew XeTeX compilation: PASSED" \
+        || warn "Hebrew XeTeX compilation: FAILED"
     rm -rf "$TEST_DIR"
 fi
 
-# ─────────────────────────────────────────────────────────
-# Done
-# ─────────────────────────────────────────────────────────
 echo ""
 echo "=============================================="
-echo "  Installation Complete!"
+echo "  Done!"
 echo "=============================================="
 echo ""
 echo "  Next steps:"
 echo "  1. Open LyX (first time: right-click > Open to bypass Gatekeeper)"
 echo "  2. Run Tools > Reconfigure, then restart LyX"
-echo "  3. New documents (Cmd+N) will default to Hebrew RTL with David CLM"
-echo "  4. Press F12 to toggle Hebrew/English within LyX"
-echo "  5. Keep your OS keyboard on English at all times"
-echo "  6. File paths must not contain Hebrew characters"
-echo ""
-echo "  For a Hebrew template with Title/Author: File > New from Template > Hebrew_Article"
+echo "  3. Cmd+N creates Hebrew RTL documents with David CLM"
+echo "  4. F12 toggles Hebrew/English (keep OS keyboard on English)"
+echo "  5. File paths must not contain Hebrew characters"
 echo ""
