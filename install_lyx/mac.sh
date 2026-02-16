@@ -137,7 +137,7 @@ Format 38
 #
 
 \scroll_wheel_zoom ctrl
-\default_otf_view_format pdf5
+\default_otf_view_format pdf4
 EOF
 
 ok "Preferences written"
@@ -198,8 +198,8 @@ write_lyx_template() {
 \font_tt_scale 100 100
 \use_microtype false
 \use_dash_ligatures true
-\graphics default
-\default_output_format pdf5
+\graphics xetex
+\default_output_format pdf4
 \output_sync 0
 \bibtex_command default
 \index_command default
