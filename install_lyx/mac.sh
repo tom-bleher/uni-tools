@@ -180,6 +180,13 @@ Format 5
 
 \bind "F12"    "language hebrew"
 \bind "S-F12"  "language english"
+
+# Rebind Cmd+E and Cmd+I to emphasis (italic) — macOS Option key
+# produces Greek/accents, so the default Cmd+Alt+E never reaches LyX
+\bind "C-e" "font-emph"
+\bind "C-M-e" "search-string-set"
+\bind "C-i" "font-emph"
+\bind "C-M-i" "inset-toggle"
 EOF
 
 ok "Keybindings written (F12 = Hebrew, Shift+F12 = English)"
@@ -201,7 +208,11 @@ write_lyx_template() {
 \origin unavailable
 \textclass article
 \begin_preamble
-\newfontfamily\hebrewfont[Script=Hebrew]{David CLM}
+% Hebrew fonts — David CLM with explicit italic/bold mapping
+\newfontfamily\hebrewfont[Script=Hebrew,
+  ItalicFont={David CLM Medium Italic},
+  BoldFont={David CLM Bold},
+  BoldItalicFont={David CLM Bold Italic}]{David CLM}
 \newfontfamily\hebrewfonttt[Script=Hebrew]{Miriam Mono CLM}
 \newfontfamily\hebrewfontsf[Script=Hebrew]{Simple CLM}
 \end_preamble
@@ -211,9 +222,9 @@ write_lyx_template() {
 \language_package default
 \inputencoding auto-legacy
 \fontencoding auto
-\font_roman "default" "David CLM"
-\font_sans "default" "Simple CLM"
-\font_typewriter "default" "Miriam Mono CLM"
+\font_roman "default" "default"
+\font_sans "default" "default"
+\font_typewriter "default" "default"
 \font_math "auto" "auto"
 \font_default_family default
 \use_non_tex_fonts true
@@ -370,12 +381,18 @@ if command -v xelatex &>/dev/null && fc-list 2>/dev/null | grep -qi "David CLM";
 \usepackage{polyglossia}
 \setdefaultlanguage{hebrew}
 \setotherlanguage{english}
-\setmainfont{David CLM}
-\newfontfamily\hebrewfont[Script=Hebrew]{David CLM}
+% English: Latin Modern (default). Hebrew: David CLM
+\newfontfamily\hebrewfont[Script=Hebrew,
+  ItalicFont={David CLM Medium Italic},
+  BoldFont={David CLM Bold},
+  BoldItalicFont={David CLM Bold Italic}]{David CLM}
 \begin{document}
 \begin{hebrew}
-שלום עולם!
+שלום עולם! \textit{נטוי} \textbf{עבה}
 \end{hebrew}
+\begin{english}
+Hello World! \textit{Italic} \textbf{Bold}
+\end{english}
 \end{document}
 TEX
     xelatex -interaction=nonstopmode -output-directory="$TEST_DIR" "$TEST_DIR/test.tex" &>/dev/null \
