@@ -3,7 +3,7 @@
 # mac.sh — Install LyX on macOS (arm/Intel) with Hebrew + XeLaTeX support
 # Based on the Madlyx guide by Kali (Oct 2025)
 #
-# Installs: MacTeX, LyX, Culmus Hebrew fonts
+# Installs: MacTeX, LyX, Culmus + Noto Hebrew fonts
 # Configures: Hebrew RTL, David CLM fonts, F12 language toggle, XeTeX output
 #
 # Prerequisites: Homebrew (https://brew.sh)
@@ -18,7 +18,15 @@ ok()    { echo -e "${GREEN}[OK]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 fail()  { echo -e "${RED}[ERROR]${NC} $1"; }
 
-LYX_DIR="$HOME/Library/Application Support/LyX-2.4"
+# Detect installed LyX version directory
+if [ -d "$HOME/Library/Application Support/LyX-2.5" ]; then
+    LYX_DIR="$HOME/Library/Application Support/LyX-2.5"
+elif [ -d "$HOME/Library/Application Support/LyX-2.4" ]; then
+    LYX_DIR="$HOME/Library/Application Support/LyX-2.4"
+else
+    # Default for fresh install (LyX 2.5 is current)
+    LYX_DIR="$HOME/Library/Application Support/LyX-2.5"
+fi
 
 echo ""
 echo "=============================================="
@@ -37,7 +45,7 @@ ok "Homebrew found"
 
 # ── Step 1: MacTeX ────────────────────────────────────
 
-info "Step 1/5: MacTeX..."
+info "Step 1/6: MacTeX..."
 if [ -f /Library/TeX/texbin/xelatex ]; then
     ok "MacTeX already installed"
 else
@@ -50,18 +58,21 @@ fi
 
 # ── Step 2: LyX ──────────────────────────────────────
 
-info "Step 2/5: LyX..."
+info "Step 2/6: LyX..."
 if [ -d "/Applications/LyX.app" ]; then
     ok "LyX already installed"
 else
+    # NOTE: The LyX Homebrew cask is deprecated (Gatekeeper issue, disabled Sept 2026).
+    # If this fails in the future, download directly from https://www.lyx.org/Download
+    warn "LyX Homebrew cask is deprecated due to Gatekeeper. Install may require: right-click > Open"
     brew install --cask lyx
     [ -d "/Applications/LyX.app" ] && ok "LyX installed" \
-        || { fail "LyX installation failed"; exit 1; }
+        || { fail "LyX installation failed. Download manually from https://www.lyx.org/Download"; exit 1; }
 fi
 
 # ── Step 3: Culmus Hebrew fonts ──────────────────────
 
-info "Step 3/5: Culmus Hebrew fonts..."
+info "Step 3/6: Culmus Hebrew fonts..."
 if fc-list 2>/dev/null | grep -qi "David CLM"; then
     ok "Culmus fonts already installed"
 else
@@ -84,9 +95,25 @@ else
     ok "Installed $FONT_COUNT Culmus font files"
 fi
 
-# ── Step 4: LyX preferences + keybindings ────────────
+# ── Step 4: Noto Hebrew fonts ─────────────────────────
 
-info "Step 4/5: LyX configuration..."
+info "Step 4/6: Noto Hebrew fonts..."
+NOTO_FONTS=(font-noto-sans-hebrew font-noto-serif-hebrew font-noto-rashi-hebrew)
+NOTO_MISSING=()
+for cask in "${NOTO_FONTS[@]}"; do
+    brew list --cask "$cask" &>/dev/null || NOTO_MISSING+=("$cask")
+done
+if [ ${#NOTO_MISSING[@]} -eq 0 ]; then
+    ok "Noto Hebrew fonts already installed"
+else
+    info "Installing ${NOTO_MISSING[*]}..."
+    brew install --cask "${NOTO_MISSING[@]}"
+    ok "Noto Hebrew fonts installed (Sans, Serif, Rashi)"
+fi
+
+# ── Step 5: LyX preferences + keybindings ────────────
+
+info "Step 5/6: LyX configuration..."
 mkdir -p "$LYX_DIR/bind" "$LYX_DIR/templates"
 
 # Back up existing files
@@ -157,9 +184,9 @@ EOF
 
 ok "Keybindings written (F12 = Hebrew, Shift+F12 = English)"
 
-# ── Step 5: Hebrew document templates ─────────────────
+# ── Step 6: Hebrew document templates ─────────────────
 
-info "Step 5/5: Hebrew document templates..."
+info "Step 6/6: Hebrew document templates..."
 
 # Shared document header for templates
 write_lyx_template() {
@@ -297,6 +324,18 @@ ok "Hebrew_Article.lyx template created"
 
 # ── Verification ──────────────────────────────────────
 
+# ── Run LyX Reconfigure ──────────────────────────────
+
+info "Running LyX reconfigure..."
+export PATH="/Library/TeX/texbin:$PATH"
+if [ -f "/Applications/LyX.app/Contents/Resources/configure.py" ]; then
+    (cd "$LYX_DIR" && python3 /Applications/LyX.app/Contents/Resources/configure.py &>/dev/null) \
+        && ok "LyX reconfigured" \
+        || warn "LyX reconfigure failed — run Tools > Reconfigure manually in LyX"
+else
+    warn "LyX configure script not found — run Tools > Reconfigure manually in LyX"
+fi
+
 echo ""
 echo "=============================================="
 echo "  Verification"
@@ -316,6 +355,7 @@ fi
 
 [ -d "/Applications/LyX.app" ] && ok "LyX: /Applications/LyX.app" || warn "LyX: not found"
 fc-list 2>/dev/null | grep -qi "David CLM" && ok "David CLM: installed" || warn "David CLM: not found by fc-list"
+fc-list 2>/dev/null | grep -qi "Noto.*Hebrew" && ok "Noto Hebrew: installed" || warn "Noto Hebrew: not found by fc-list"
 
 for f in preferences bind/user.bind templates/defaults.lyx templates/Hebrew_Article.lyx; do
     [ -f "$LYX_DIR/$f" ] && ok "$f" || warn "Missing: $f"
