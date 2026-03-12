@@ -246,8 +246,12 @@ write_lyx_template() {
 \paperfontsize default
 \spacing single
 \use_hyperref false
-\papersize default
-\use_geometry false
+\papersize a4paper
+\use_geometry true
+\topmargin 2cm
+\bottommargin 2cm
+\leftmargin 2cm
+\rightmargin 2cm
 \use_package amsmath 1
 \use_package amssymb 1
 \use_package cancel 1
