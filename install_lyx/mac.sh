@@ -130,8 +130,8 @@ Format 38
 #
 
 \path_prefix "/Library/TeX/texbin:/usr/texbin:/opt/homebrew/bin:/opt/local/bin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin"
-\sort_layouts true
 \kbmap true
+\kbmap_primary "null"
 \kbmap_secondary "hebrew"
 \preview no_math
 \preview_scale_factor 0.8
@@ -140,7 +140,6 @@ Format 38
 # SCREEN & FONTS SECTION ############################
 #
 
-\cursor_follows_scrollbar true
 \scroll_below_document true
 \screen_font_roman "David CLM"
 \screen_font_sans "Simple CLM"
