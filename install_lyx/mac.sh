@@ -10,13 +10,39 @@
 # Usage: chmod +x mac.sh && ./mac.sh
 #
 
-set -e
+set -euo pipefail
+trap 'rm -rf "${CULMUS_TMP:-}"' EXIT INT TERM
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()  { echo -e "${BLUE}[INFO]${NC} $1"; }
 ok()    { echo -e "${GREEN}[OK]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 fail()  { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# ── Flags ─────────────────────────────────────────────
+FORCE=false
+case "${1:-}" in
+    --force) FORCE=true ;;
+    --uninstall)
+        # Detect LyX dir
+        if [ -d "$HOME/Library/Application Support/LyX-2.5" ]; then
+            LYX_DIR="$HOME/Library/Application Support/LyX-2.5"
+        elif [ -d "$HOME/Library/Application Support/LyX-2.4" ]; then
+            LYX_DIR="$HOME/Library/Application Support/LyX-2.4"
+        else
+            fail "No LyX configuration directory found"; exit 1
+        fi
+        warn "Removing LyX configuration files (not LyX itself)..."
+        for f in preferences bind/user.bind templates/defaults.lyx \
+                 templates/Hebrew_Article.lyx templates/English_Article.lyx; do
+            [ -f "$LYX_DIR/$f" ] && rm "$LYX_DIR/$f" && ok "Removed $f"
+        done
+        info "Run Tools > Reconfigure in LyX to restore defaults"
+        exit 0
+        ;;
+    "") ;; # no flag
+    *) fail "Unknown flag: $1. Use --force or --uninstall."; exit 1 ;;
+esac
 
 # Detect installed LyX version directory
 if [ -d "$HOME/Library/Application Support/LyX-2.5" ]; then
@@ -346,6 +372,18 @@ Format 38
 
 \scroll_wheel_zoom ctrl
 \default_otf_view_format pdf4
+
+#
+# COMPLETION SECTION ##########################
+#
+
+\completion_inline_math true
+\completion_inline_text false
+\completion_popup_math true
+\completion_popup_text false
+\completion_inline_delay 0.2
+\completion_popup_delay 0.3
+\completion_minlength 3
 EOF
 
 ok "Preferences written"
@@ -397,10 +435,18 @@ write_lyx_template() {
 \newfontfamily\hebrewfonttt[Script=Hebrew]{Miriam Mono CLM}
 \newfontfamily\hebrewfontsf[Script=Hebrew]{Simple CLM}
 
+% OpenType math font for proper math typography with XeTeX
+\usepackage{unicode-math}
+\setmathfont{XITS Math}
+
 % Hyperref — clickable cross-refs & PDF bookmarks for Hebrew
 % unicode=false is required for correct Hebrew PDF bookmarks
 \usepackage[unicode=false,bookmarks=true,colorlinks=true,
   linkcolor=blue,citecolor=green,urlcolor=magenta]{hyperref}
+
+% Auto font-switch for characters outside Hebrew Unicode block
+\usepackage{ucharclasses}
+\setTransitionsForLatin{\begingroup\rmfamily}{\endgroup}
 \end_preamble
 \use_default_options true
 \begin_modules
@@ -462,7 +508,7 @@ eqs-within-sections
 \suppress_date false
 \justification true
 \use_refstyle 1
-\use_formatted_ref 0
+\use_formatted_ref 1
 \use_minted 0
 \use_lineno 0
 \index Index
@@ -596,7 +642,7 @@ cat > "$LYX_DIR/templates/English_Article.lyx" << 'ENDLYX'
 \suppress_date false
 \justification true
 \use_refstyle 1
-\use_formatted_ref 0
+\use_formatted_ref 1
 \use_minted 0
 \use_lineno 0
 \index Index
