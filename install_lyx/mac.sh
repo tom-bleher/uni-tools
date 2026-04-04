@@ -43,6 +43,23 @@ if ! command -v brew &>/dev/null; then
 fi
 ok "Homebrew found"
 
+# ── Confirm before installing ─────────────────────────
+
+echo ""
+info "This script will install (skipping what you already have):"
+[ -f /Library/TeX/texbin/xelatex ]  || echo "  • MacTeX (~6 GB download)"
+[ -d "/Applications/LyX.app" ]      || echo "  • LyX"
+fc-list 2>/dev/null | grep -qi "David CLM" || echo "  • Culmus Hebrew fonts"
+echo "  • Noto Hebrew fonts (Sans, Serif, Rashi)"
+echo "  • LyX preferences, keybindings & templates"
+echo ""
+read -rp "Continue? [Y/n] " REPLY
+if [[ "$REPLY" =~ ^[Nn] ]]; then
+    echo "Aborted."
+    exit 0
+fi
+echo ""
+
 # ── Step 1: MacTeX ────────────────────────────────────
 
 info "Step 1/6: MacTeX..."
@@ -64,10 +81,14 @@ if [ -d "/Applications/LyX.app" ]; then
 else
     # NOTE: The LyX Homebrew cask is deprecated (Gatekeeper issue, disabled Sept 2026).
     # If this fails in the future, download directly from https://www.lyx.org/Download
-    warn "LyX Homebrew cask is deprecated due to Gatekeeper. Install may require: right-click > Open"
     brew install --cask lyx
-    [ -d "/Applications/LyX.app" ] && ok "LyX installed" \
-        || { fail "LyX installation failed. Download manually from https://www.lyx.org/Download"; exit 1; }
+    if [ -d "/Applications/LyX.app" ]; then
+        ok "LyX installed"
+        info "First launch: right-click LyX.app > Open to bypass Gatekeeper"
+    else
+        fail "LyX installation failed. Download manually from https://www.lyx.org/Download"
+        exit 1
+    fi
 fi
 
 # ── Step 3: Culmus Hebrew fonts ──────────────────────
