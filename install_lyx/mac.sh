@@ -78,15 +78,12 @@ if fc-list 2>/dev/null | grep -qi "David CLM"; then
 else
     CULMUS_TMP=$(mktemp -d)
     info "Downloading Culmus 0.140..."
-    curl -sL -o "$CULMUS_TMP/culmus.tar.gz" \
+    curl -#L -o "$CULMUS_TMP/culmus.tar.gz" \
         "https://sourceforge.net/projects/culmus/files/culmus/0.140/culmus-0.140.tar.gz/download"
     tar xzf "$CULMUS_TMP/culmus.tar.gz" -C "$CULMUS_TMP"
 
     mkdir -p "$HOME/Library/Fonts"
-    cp "$CULMUS_TMP"/culmus-0.140/{David,FrankRuehl,Miriam,Nachlieli,Aharoni}CLM-*.otf \
-       "$CULMUS_TMP"/culmus-0.140/{MiriamMono,Simple}CLM-*.ttf \
-       "$HOME/Library/Fonts/" 2>/dev/null
-    # Also copy any remaining .otf/.ttf CLM fonts
+    # Copy all CLM font files (.otf and .ttf) — Culmus 0.140 ships OpenType
     cp "$CULMUS_TMP"/culmus-0.140/*CLM*.otf "$CULMUS_TMP"/culmus-0.140/*CLM*.ttf \
        "$HOME/Library/Fonts/" 2>/dev/null || true
     rm -rf "$CULMUS_TMP"
