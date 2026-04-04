@@ -205,14 +205,24 @@ write_lyx_template() {
 \textclass article
 \begin_preamble
 % Hebrew fonts — David CLM with explicit italic/bold mapping
-\newfontfamily\hebrewfont[Script=Hebrew,
+\newfontfamily\hebrewfont[Script=Hebrew,Ligatures=TeX,
   ItalicFont={David CLM Medium Italic},
   BoldFont={David CLM Bold},
   BoldItalicFont={David CLM Bold Italic}]{David CLM}
 \newfontfamily\hebrewfonttt[Script=Hebrew]{Miriam Mono CLM}
 \newfontfamily\hebrewfontsf[Script=Hebrew]{Simple CLM}
+
+% Hyperref — clickable cross-refs & PDF bookmarks for Hebrew
+% unicode=false is required for correct Hebrew PDF bookmarks
+\usepackage[unicode=false,bookmarks=true,colorlinks=true,
+  linkcolor=blue,citecolor=green,urlcolor=magenta]{hyperref}
 \end_preamble
 \use_default_options true
+\begin_modules
+theorems-ams
+theorems-ams-extended
+eqs-within-sections
+\end_modules
 \maintain_unincluded_children no
 \language hebrew
 \language_package default
@@ -297,6 +307,10 @@ write_lyx_template() {
 \docbook_mathml_prefix 1
 \end_header
 HEADER
+    # NOTE: \use_hyperref is false because hyperref is loaded manually in the
+    # preamble with unicode=false (required for correct Hebrew PDF bookmarks).
+    # The theorems-ams modules are known to have potential RTL issues with
+    # amsthm — if theorem numbering appears reversed, wrap with \L{}.
     echo "" >> "$file"
     echo "$body" >> "$file"
 }
@@ -371,7 +385,7 @@ cat > "$LYX_DIR/templates/English_Article.lyx" << 'ENDLYX'
 \float_alignment class
 \paperfontsize 12
 \spacing single
-\use_hyperref false
+\use_hyperref true
 \papersize a4paper
 \use_geometry true
 \topmargin 2cm
