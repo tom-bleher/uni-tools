@@ -230,7 +230,7 @@ write_lyx_template() {
 \font_typewriter_osf false
 \font_sf_scale 100 100
 \font_tt_scale 100 100
-\use_microtype false
+\use_microtype true
 \use_dash_ligatures true
 \graphics xetex
 \default_output_format pdf4
@@ -239,7 +239,7 @@ write_lyx_template() {
 \index_command default
 \float_placement class
 \float_alignment class
-\paperfontsize default
+\paperfontsize 12
 \spacing single
 \use_hyperref false
 \papersize a4paper
@@ -360,7 +360,7 @@ cat > "$LYX_DIR/templates/English_Article.lyx" << 'ENDLYX'
 \font_typewriter_osf false
 \font_sf_scale 100 100
 \font_tt_scale 100 100
-\use_microtype false
+\use_microtype true
 \use_dash_ligatures true
 \graphics default
 \default_output_format pdf2
@@ -369,7 +369,7 @@ cat > "$LYX_DIR/templates/English_Article.lyx" << 'ENDLYX'
 \index_command default
 \float_placement class
 \float_alignment class
-\paperfontsize default
+\paperfontsize 12
 \spacing single
 \use_hyperref false
 \papersize a4paper
@@ -543,4 +543,6 @@ echo "  3. Cmd+N creates Hebrew RTL documents with David CLM"
 echo "  4. F12 toggles Hebrew/English (keep OS keyboard on English)"
 echo "     On laptops: you may need Fn+F12 if F12 is mapped to a media key"
 echo "  5. File paths must not contain Hebrew characters"
+echo ""
+"
 echo ""
