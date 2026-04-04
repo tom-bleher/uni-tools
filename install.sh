@@ -1,13 +1,13 @@
 #!/bin/bash
 #
-# mac.sh — Install LyX on macOS (arm/Intel) with Hebrew + XeLaTeX support
+# install.sh — Install LyX on macOS (arm/Intel) with Hebrew + XeLaTeX support
 # Based on the Madlyx guide by Kali (Oct 2025)
 #
 # Installs: MacTeX, LyX, Culmus + Noto Hebrew fonts
 # Configures: Hebrew RTL, David CLM fonts, F12 language toggle, XeTeX output
 #
 # Prerequisites: Homebrew (https://brew.sh)
-# Usage: chmod +x mac.sh && ./mac.sh
+# Usage: chmod +x install.sh && ./install.sh
 #
 
 set -euo pipefail
