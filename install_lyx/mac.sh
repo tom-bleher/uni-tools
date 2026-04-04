@@ -483,7 +483,9 @@ ok "English_Article.lyx template created (Overleaf-style)"
 
 info "Running LyX reconfigure..."
 export PATH="/Library/TeX/texbin:$PATH"
-if [ -f "/Applications/LyX.app/Contents/Resources/configure.py" ]; then
+if ! command -v python3 &>/dev/null; then
+    warn "python3 not found — run Tools > Reconfigure manually in LyX"
+elif [ -f "/Applications/LyX.app/Contents/Resources/configure.py" ]; then
     (cd "$LYX_DIR" && python3 /Applications/LyX.app/Contents/Resources/configure.py &>/dev/null) \
         && ok "LyX reconfigured" \
         || warn "LyX reconfigure failed — run Tools > Reconfigure manually in LyX"
