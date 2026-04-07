@@ -1,13 +1,11 @@
 # lyx-he
 
-One-click installer for [LyX](https://www.lyx.org/) with full **Hebrew RTL** and **XeLaTeX** support on macOS.
-Based on the [Madlyx guide](https://mkali56.wixsite.com/madlyx) by Kali.
+Single-script installer for [LyX](https://www.lyx.org/) with full **Hebrew RTL** and **XeLaTeX** support on macOS.
+Based on the [Madlyx guide](https://mkali56.wixsite.com/madlyx) by Michael Kali.
 
 <p align="center">
   <img src="assets/banner.png" alt="lyx-he installer banner" width="640">
 </p>
-
----
 
 ## Quick Start
 
@@ -18,9 +16,23 @@ chmod +x install.sh
 ./install.sh
 ```
 
-That's it. The script is **idempotent** — run it again safely at any time. It skips components already installed and backs up existing LyX config files.
+The script is **idempotent** — run it again safely at any time. Already-installed components are skipped and existing config files are backed up.
 
----
+> **Prerequisite:** macOS (Apple Silicon or Intel). The installer sets up [Homebrew](https://brew.sh) automatically if needed.
+
+### Usage
+
+```
+./install.sh              # Interactive component picker (default)
+./install.sh --force      # Install all components without prompting
+./install.sh --dry-run    # Show what would be installed without doing anything
+./install.sh --uninstall  # Interactively select components to remove
+./install.sh --help       # Show usage
+```
+
+<p align="center">
+  <img src="assets/usage.png" alt="CLI usage" width="570">
+</p>
 
 ## What Gets Installed
 
@@ -38,63 +50,58 @@ That's it. The script is **idempotent** — run it again safely at any time. It 
 - XeLaTeX output with polyglossia and bidi
 - F12 / Shift+F12 for Hebrew/English language toggle
 - Cmd+E / Cmd+I rebound to emphasis (italic)
+- Math auto-completion (inline and popup)
+- Automatic Latin/Hebrew font switching via ucharclasses
+- OpenType math via unicode-math (XITS Math)
+- Clickable cross-references and PDF bookmarks via hyperref
 - Hebrew + English article templates
 
----
+## How It Works
 
-## Install Preview
+An interactive picker lets you choose exactly which components to install:
+
+<p align="center">
+  <img src="assets/component-picker.png" alt="Interactive component picker" width="570">
+</p>
+
+The installer then runs through each step with progress tracking and automatic verification:
 
 <p align="center">
   <img src="assets/install-steps.png" alt="Installation steps" width="570">
 </p>
 
----
-
-## Prerequisites
-
-- **macOS** (Apple Silicon or Intel)
-- **[Homebrew](https://brew.sh)** — install with:
-  ```bash
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  ```
-
----
-
 ## Keyboard Shortcuts
 
 Keep your **macOS keyboard on English** at all times. Language switching is handled inside LyX.
 
-### Language
+**Configured by lyx-he**
 
 | Shortcut | Action |
 |----------|--------|
 | **F12** | Switch to Hebrew |
 | **Shift+F12** | Switch to English |
+| **Cmd+E** / **Cmd+I** | Emphasis (italic) |
 
-> On laptops with media keys on the function row, you may need **Fn+F12**. To avoid this, go to **System Settings > Keyboard** and enable "Use F1, F2, etc. keys as standard function keys".
-
-### Editing
+**LyX built-in defaults**
 
 | Shortcut | Action |
 |----------|--------|
-| **Cmd+E** | Emphasis (italic) |
-| **Cmd+I** | Emphasis (italic) |
 | **Cmd+B** | Bold |
 | **Cmd+N** | New document (Hebrew RTL default) |
 | **Cmd+M** | Inline math mode |
 | **Cmd+Shift+M** | Display math mode |
 | **Cmd+R** | Preview PDF |
 
----
+> On laptops with media keys on the function row, you may need **Fn+F12**. To avoid this, go to **System Settings > Keyboard** and enable "Use F1, F2, etc. keys as standard function keys".
 
 ## Font Setup
 
-The installer configures a dual-font system:
+The installer configures a dual-font system via XeLaTeX + polyglossia:
 
 - **Hebrew** — David CLM (Culmus project), with full italic/bold support
 - **English** — Latin Modern (the default LaTeX/Overleaf font)
 
-Handled via XeLaTeX + polyglossia. Press F12 to switch to Hebrew (David CLM); English text renders in Latin Modern automatically.
+Press F12 to switch to Hebrew (David CLM); English text renders in Latin Modern automatically.
 
 <details>
 <summary><strong>All available Hebrew fonts</strong></summary>
@@ -112,11 +119,7 @@ Handled via XeLaTeX + polyglossia. Press F12 to switch to Hebrew (David CLM); En
 
 </details>
 
----
-
 ## Document Templates
-
-The installer creates three templates:
 
 | Template | Description |
 |----------|-------------|
@@ -124,16 +127,24 @@ The installer creates three templates:
 | `Hebrew_Article.lyx` | Article with Title and Author fields |
 | `English_Article.lyx` | Standard Overleaf-style English article |
 
-All Hebrew templates come pre-configured with XeLaTeX output, David CLM fonts, A4 paper, and 2cm margins.
+Both Hebrew templates come pre-configured with XeLaTeX output, David CLM fonts, A4 paper, and 2cm margins.
 
----
+## Uninstall
+
+```bash
+./install.sh --uninstall
+```
+
+An interactive picker lets you select which components to remove. Config items are pre-selected; applications and fonts are not. Use **Space** to toggle, **Enter** to confirm.
 
 ## Troubleshooting
+
+Installation logs are saved to `~/.lyx-he-install.log` — check this file if something goes wrong.
 
 <details>
 <summary><strong>LyX won't open (Gatekeeper)</strong></summary>
 
-Right-click the app > **Open** > click Open in the dialog. You only need to do this once.
+The installer attempts to clear quarantine automatically. If that fails, right-click the app > **Open** > click Open in the dialog. You only need to do this once.
 </details>
 
 <details>
@@ -167,21 +178,9 @@ Check these settings:
 LyX and TeX cannot handle Hebrew characters in file paths. Save your documents in directories with English-only names.
 </details>
 
----
-
-## Uninstall
-
-To remove only the configuration files this script created (LyX and MacTeX remain installed):
-
-```bash
-./install.sh --uninstall
-```
-
----
-
 ## Credits
 
-- [Madlyx guide](https://mkali56.wixsite.com/madlyx) by Kali — the original Hebrew LyX setup instructions
+- [Madlyx guide](https://mkali56.wixsite.com/madlyx) by Michael Kali — the original Hebrew LyX setup instructions
 - [Culmus Project](https://culmus.sourceforge.io/) — Hebrew fonts
 - [LyX](https://www.lyx.org/) — the document processor
 
