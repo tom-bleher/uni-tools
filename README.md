@@ -60,7 +60,7 @@ cd lyx-he
 - Cmd+E / Cmd+I rebound to emphasis (italic)
 - Math auto-completion (inline and popup)
 - Automatic Latin/Hebrew font switching via ucharclasses
-- OpenType math via unicode-math (XITS Math)
+- OpenType math via unicode-math (STIX Two Math)
 - Clickable cross-references and PDF bookmarks via hyperref
 - Document templates (article, solutions, CV) in Hebrew and English
 
@@ -140,7 +140,7 @@ The installer includes **6 ready-to-use templates** — open them from **File > 
 | `English_Solutions.lyx` | English version of the solutions template | [PDF](examples/English_Solutions.pdf) |
 | `English_CV.lyx` | Academic CV based on [Bruce Pourciau's template](https://wiki.lyx.org/Examples/CV) | [PDF](examples/English_CV.pdf) |
 
-Hebrew templates come pre-configured with XeLaTeX output, David CLM fonts, A4 paper, and 2cm margins.
+Hebrew templates come pre-configured with XeLaTeX output, David CLM fonts, and A4 paper.
 
 ### Template Gallery
 
@@ -215,6 +215,13 @@ Check these settings:
 
 LyX and TeX cannot handle Hebrew characters in file paths. Save your documents in directories with English-only names.
 </details>
+
+## TODO
+
+- [ ] Extend installer to Linux and Windows
+- [ ] GUI wrapper for the installer
+- [ ] Integration tests
+Contributions are welcome! Feel free to open an issue or submit a pull request.
 
 ## Credits
 
