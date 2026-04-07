@@ -129,16 +129,43 @@ Press F12 to switch to Hebrew (David CLM); English text renders in Latin Modern 
 
 ## Document Templates
 
-| Template | Description |
-|----------|-------------|
-| `defaults.lyx` | Blank Hebrew RTL document (used by Cmd+N) |
-| `Hebrew_Article.lyx` | Article with Title/Author/Abstract/TOC |
-| `English_Article.lyx` | Standard Overleaf-style English article with Title/Author/Abstract/TOC |
-| `Hebrew_Solutions.lyx` | Homework solutions with title box, clickable TOC, questions with sub-parts — based on templates from [Ivlyx](https://lyx.srayaa.com/) |
-| `English_Solutions.lyx` | English version of the homework solutions template |
-| `English_CV.lyx` | Academic CV/resume based on [Bruce Pourciau's CV template](https://wiki.lyx.org/Examples/CV) |
+The installer includes **6 ready-to-use templates** — open them from **File > New from Template** in LyX.
+
+| Template | Description | Preview |
+|----------|-------------|---------|
+| `defaults.lyx` | Blank Hebrew RTL document (used by Cmd+N) | — |
+| `Hebrew_Article.lyx` | Article with Title / Author / Abstract / TOC | [PDF](examples/Hebrew_Article.pdf) |
+| `English_Article.lyx` | Overleaf-style English article | [PDF](examples/English_Article.pdf) |
+| `Hebrew_Solutions.lyx` | Homework solutions with title box, clickable TOC, and sub-parts | [PDF](examples/Hebrew_Solutions.pdf) |
+| `English_Solutions.lyx` | English version of the solutions template | [PDF](examples/English_Solutions.pdf) |
+| `English_CV.lyx` | Academic CV based on [Bruce Pourciau's template](https://wiki.lyx.org/Examples/CV) | [PDF](examples/English_CV.pdf) |
 
 Hebrew templates come pre-configured with XeLaTeX output, David CLM fonts, A4 paper, and 2cm margins.
+
+### Template Gallery
+
+<table>
+<tr>
+<td align="center"><strong>Hebrew Article</strong></td>
+<td align="center"><strong>English Article</strong></td>
+<td align="center"><strong>Academic CV</strong></td>
+</tr>
+<tr>
+<td><a href="examples/Hebrew_Article.pdf"><img src="examples/Hebrew_Article.png" alt="Hebrew Article" width="250"></a></td>
+<td><a href="examples/English_Article.pdf"><img src="examples/English_Article.png" alt="English Article" width="250"></a></td>
+<td><a href="examples/English_CV.pdf"><img src="examples/English_CV.png" alt="English CV" width="250"></a></td>
+</tr>
+<tr>
+<td align="center"><strong>Hebrew Solutions</strong></td>
+<td align="center"><strong>English Solutions</strong></td>
+<td></td>
+</tr>
+<tr>
+<td><a href="examples/Hebrew_Solutions.pdf"><img src="examples/Hebrew_Solutions.png" alt="Hebrew Solutions" width="250"></a></td>
+<td><a href="examples/English_Solutions.pdf"><img src="examples/English_Solutions.png" alt="English Solutions" width="250"></a></td>
+<td></td>
+</tr>
+</table>
 
 ## Uninstall
 
