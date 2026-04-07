@@ -17,9 +17,9 @@
 set -euo pipefail
 
 # ── Colors & output helpers ──────────────────────────
-BOLD='\033[1m'; DIM='\033[90m'; NC='\033[0m'
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
+BOLD=$'\033[1m'; DIM=$'\033[90m'; NC=$'\033[0m'
+RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'
+CYAN=$'\033[0;36m'
 
 info()    { echo -e "  ${CYAN}●${NC} $1"; }
 ok()      { echo -e "  ${GREEN}✓${NC} $1"; }
@@ -1383,7 +1383,7 @@ Introduction
 \end_document
 ENDLYX
 
-    ok "English_Article.lyx template created (Overleaf-style)"
+    ok "English_Article.lyx template created"
 
     # Hebrew_Solutions.lyx — homework solutions with title box, TOC, questions
     cat > "$LYX_DIR/templates/Hebrew_Solutions.lyx" << 'ENDLYX'
@@ -2981,23 +2981,32 @@ else
     _total_fmt=$(printf '%ds' "$_total_el")
 fi
 
-header "Setup Complete  ${DIM}(${_total_fmt})${NC}"
 echo ""
-echo -e "  ${BOLD}Next steps:${NC}"
+echo ""
+echo -e "  ${GREEN}${BOLD}Setup complete!${NC}  ${DIM}(${_total_fmt})${NC}"
+echo ""
+echo -e "  ${DIM}────────────────────────────────────────────${NC}"
+echo ""
+echo -e "  ${BOLD}Getting started:${NC}"
 echo ""
 if [ -d "/Applications/LyX.app" ]; then
-    echo -e "  ${CYAN}1${NC}  Open LyX and run ${BOLD}${YELLOW}Tools > Reconfigure${NC}, then restart LyX"
-    echo -e "     ${DIM}This is required for the new settings to take effect${NC}"
+    echo -e "    ${CYAN}1.${NC}  Open LyX and run ${BOLD}Tools > Reconfigure${NC}, then restart LyX"
 else
-    echo -e "  ${CYAN}1${NC}  Install LyX, then run ${BOLD}${YELLOW}Tools > Reconfigure${NC}"
+    echo -e "    ${CYAN}1.${NC}  Install LyX, then run ${BOLD}Tools > Reconfigure${NC}"
 fi
-echo -e "  ${CYAN}2${NC}  ${BOLD}Cmd+N${NC} creates Hebrew RTL documents with David CLM"
-echo -e "  ${CYAN}3${NC}  ${BOLD}F12${NC} toggles Hebrew/English ${DIM}(keep OS keyboard on English)${NC}"
-echo -e "     ${DIM}On laptops: you may need Fn+F12 if F12 is mapped to a media key${NC}"
-echo -e "  ${CYAN}4${NC}  Use ${BOLD}File > New from Template${NC} for CV, letter, and homework templates"
-echo -e "  ${CYAN}5${NC}  File paths must not contain Hebrew characters"
+echo -e "    ${CYAN}2.${NC}  ${BOLD}Cmd+N${NC} to create a new Hebrew RTL document"
+echo -e "    ${CYAN}3.${NC}  ${BOLD}F12${NC} / ${BOLD}Shift+F12${NC} to switch between Hebrew and English"
+if is_selected "templates"; then
+    echo -e "    ${CYAN}4.${NC}  ${BOLD}File > New from Template${NC} for articles, solutions, and CV"
+fi
+echo ""
+echo -e "  ${DIM}Tip: Keep your macOS keyboard on English — language${NC}"
+echo -e "  ${DIM}switching is handled inside LyX with F12.${NC}"
 echo ""
 echo -e "  ${DIM}Log: $LOG_FILE${NC}"
+echo -e "  ${DIM}Report issues: https://github.com/tom-bleher/lyx-he${NC}"
+echo ""
+echo -e "  ${BOLD}Happy LyXing!${NC}"
 echo ""
 
 }
