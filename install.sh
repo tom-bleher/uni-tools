@@ -269,10 +269,8 @@ usage() {
 # ── Detect LyX config directory ──────────────────────
 detect_lyx_dir() {
     local latest=""
-    for d in "$HOME/Library/Application Support"/LyX-*; do
-        [ -d "$d" ] && latest="$d"
-    done
-    if [ -n "$latest" ]; then
+    latest=$(printf '%s\n' "$HOME/Library/Application Support"/LyX-* | sort -V | tail -1)
+    if [ -d "$latest" ]; then
         LYX_DIR="$latest"
     else
         LYX_DIR="$HOME/Library/Application Support/LyX-2.5"
@@ -1009,8 +1007,8 @@ EOF
         local body="$2"
         local extra_preamble="${3:-}"
         cat > "$file" << 'PREAMBLE'
-#LyX 2.4 created this file. For more info see https://www.lyx.org/
-\lyxformat 620
+#LyX 2.5 created this file. For more info see https://www.lyx.org/
+\lyxformat 643
 \begin_document
 \begin_header
 \save_transient_properties true
@@ -1098,7 +1096,7 @@ eqs-within-sections
 \paperorientation portrait
 \suppress_date false
 \justification true
-\use_refstyle 1
+\crossref_package prettyref
 \use_formatted_ref 1
 \use_minted 0
 \use_lineno 0
@@ -1127,6 +1125,7 @@ eqs-within-sections
 \html_be_strict false
 \docbook_table_output 0
 \docbook_mathml_prefix 1
+\docbook_mathml_version 0
 \end_header
 HEADER
         # NOTE: \use_hyperref is false because hyperref is loaded manually in the
@@ -1211,8 +1210,8 @@ LatexCommand tableofcontents
 
     # English_Article.lyx — default Overleaf-style English article
     cat > "$LYX_DIR/templates/English_Article.lyx" << 'ENDLYX'
-#LyX 2.4 created this file. For more info see https://www.lyx.org/
-\lyxformat 620
+#LyX 2.5 created this file. For more info see https://www.lyx.org/
+\lyxformat 643
 \begin_document
 \begin_header
 \save_transient_properties true
@@ -1276,7 +1275,7 @@ LatexCommand tableofcontents
 \paperorientation portrait
 \suppress_date false
 \justification true
-\use_refstyle 1
+\crossref_package prettyref
 \use_formatted_ref 1
 \use_minted 0
 \use_lineno 0
@@ -1305,6 +1304,7 @@ LatexCommand tableofcontents
 \html_be_strict false
 \docbook_table_output 0
 \docbook_mathml_prefix 1
+\docbook_mathml_version 0
 \end_header
 
 \begin_body
@@ -1369,8 +1369,8 @@ ENDLYX
 
     # Hebrew_Solutions.lyx — homework solutions with title box, TOC, questions
     cat > "$LYX_DIR/templates/Hebrew_Solutions.lyx" << 'ENDLYX'
-#LyX 2.4 created this file. For more info see https://www.lyx.org/
-\lyxformat 620
+#LyX 2.5 created this file. For more info see https://www.lyx.org/
+\lyxformat 643
 \begin_document
 \begin_header
 \save_transient_properties true
@@ -1519,7 +1519,7 @@ End
 \paperorientation portrait
 \suppress_date false
 \justification true
-\use_refstyle 1
+\crossref_package prettyref
 \use_formatted_ref 1
 \use_minted 0
 \use_lineno 0
@@ -1555,6 +1555,7 @@ End
 \html_be_strict false
 \docbook_table_output 0
 \docbook_mathml_prefix 1
+\docbook_mathml_version 0
 \end_header
 
 \begin_body
@@ -1745,8 +1746,8 @@ ENDLYX
 
     # English_Solutions.lyx — English version of homework solutions template
     cat > "$LYX_DIR/templates/English_Solutions.lyx" << 'ENDLYX'
-#LyX 2.4 created this file. For more info see https://www.lyx.org/
-\lyxformat 620
+#LyX 2.5 created this file. For more info see https://www.lyx.org/
+\lyxformat 643
 \begin_document
 \begin_header
 \save_transient_properties true
@@ -1846,7 +1847,7 @@ theorems-ams
 \paperorientation portrait
 \suppress_date false
 \justification true
-\use_refstyle 1
+\crossref_package prettyref
 \use_formatted_ref 1
 \use_minted 0
 \use_lineno 0
@@ -1882,6 +1883,7 @@ theorems-ams
 \html_be_strict false
 \docbook_table_output 0
 \docbook_mathml_prefix 1
+\docbook_mathml_version 0
 \end_header
 
 \begin_body
