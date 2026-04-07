@@ -1399,7 +1399,7 @@ ENDLYX
 % Display equation spacing
 \AtBeginDocument{\setlength\abovedisplayskip{6pt}}
 \AtBeginDocument{\setlength\belowdisplayskip{6pt}}
-\AtBeginDocument{\setlength\belowdisplayshortskip{6pt}}
+\AtBeginDocument{\setlength\abovedisplayshortskip{6pt}}
 \AtBeginDocument{\setlength\belowdisplayshortskip{6pt}}
 
 % Footnoterule on the right side
@@ -1756,7 +1756,7 @@ ENDLYX
 % Display equation spacing
 \AtBeginDocument{\setlength\abovedisplayskip{6pt}}
 \AtBeginDocument{\setlength\belowdisplayskip{6pt}}
-\AtBeginDocument{\setlength\belowdisplayshortskip{6pt}}
+\AtBeginDocument{\setlength\abovedisplayshortskip{6pt}}
 \AtBeginDocument{\setlength\belowdisplayshortskip{6pt}}
 
 % Custom colors
