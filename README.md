@@ -36,6 +36,10 @@ cd lyx-he
 
 </details>
 
+<p align="center">
+  <img src="screenshots/usage.png" alt="CLI usage" width="570">
+</p>
+
 ## What You Get
 
 [MacTeX](https://www.tug.org/mactex/) (~6 GB), [LyX](https://www.lyx.org/), [Culmus](https://culmus.sourceforge.io/) and [Noto Hebrew](https://fonts.google.com/noto) fonts — plus full configuration:
@@ -48,6 +52,10 @@ cd lyx-he
 
 <p align="center">
   <img src="screenshots/component-picker.png" alt="Interactive component picker" width="570">
+</p>
+
+<p align="center">
+  <img src="screenshots/install-steps.png" alt="Installation steps" width="570">
 </p>
 
 ## Templates
@@ -127,7 +135,11 @@ Contributions welcome — open an issue or PR.
 
 ## Credits
 
-[Madlyx guide](https://mkali56.wixsite.com/madlyx) by Michael Kali | [Ivlyx](https://lyx.srayaa.com/) | [Bruce Pourciau](https://wiki.lyx.org/Examples/CV) (CV template) | [Culmus Project](https://culmus.sourceforge.io/) | [LyX](https://www.lyx.org/)
+- [Madlyx guide](https://mkali56.wixsite.com/madlyx) by Michael Kali
+- [Ivlyx](https://lyx.srayaa.com/)
+- [Bruce Pourciau](https://wiki.lyx.org/Examples/CV) (CV template)
+- [Culmus Project](https://culmus.sourceforge.io/)
+- [LyX](https://www.lyx.org/)
 
 ## License
 

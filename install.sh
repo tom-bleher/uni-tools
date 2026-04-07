@@ -697,6 +697,14 @@ for cask in "${NOTO_FONTS[@]}"; do
 done
 _HAS_NOTO=false; [ ${#NOTO_MISSING[@]} -eq 0 ] && _HAS_NOTO=true
 
+_HAS_CONFIG=false
+[ -f "$LYX_DIR/preferences" ] && [ -f "$LYX_DIR/bind/user.bind" ] && _HAS_CONFIG=true
+
+_HAS_TEMPLATES=false
+for f in "${TEMPLATE_FILES[@]}"; do
+    [ -f "$LYX_DIR/$f" ] && _HAS_TEMPLATES=true && break
+done
+
 # ── Build install menu ────────────────────────────────
 
 TUI_ITEMS=()
@@ -715,8 +723,11 @@ TUI_ITEMS+=("$_label"); TUI_CHECKED+=(1); INSTALL_ACTIONS+=("culmus")
 _label="Noto Hebrew fonts (Sans, Serif, Rashi)";         $_HAS_NOTO && _label+=" (installed)"
 TUI_ITEMS+=("$_label"); TUI_CHECKED+=(1); INSTALL_ACTIONS+=("noto")
 
-TUI_ITEMS+=("LyX configuration (preferences, keybindings, templates)")
-TUI_CHECKED+=(1); INSTALL_ACTIONS+=("config")
+_label="LyX preferences & keybindings";                  $_HAS_CONFIG && _label+=" (installed)"
+TUI_ITEMS+=("$_label"); TUI_CHECKED+=(1); INSTALL_ACTIONS+=("config")
+
+_label="Document templates (articles, solutions, CV)";   $_HAS_TEMPLATES && _label+=" (installed)"
+TUI_ITEMS+=("$_label"); TUI_CHECKED+=(1); INSTALL_ACTIONS+=("templates")
 
 if $FORCE; then
     info "Force mode — installing all components"
@@ -750,7 +761,8 @@ _describe_action() {
         lyx)    echo "LyX — WYSIWYM document editor" ;;
         culmus) echo "Culmus Hebrew fonts ${DIM}(David CLM, Miriam, Frank Ruehl, etc.)${NC}" ;;
         noto)   echo "Noto Hebrew fonts ${DIM}(Sans, Serif, Rashi)${NC}" ;;
-        config) echo "LyX configuration ${DIM}(preferences, keybindings, templates)${NC}" ;;
+        config)    echo "LyX preferences & keybindings ${DIM}(F12 Hebrew toggle, fonts, etc.)${NC}" ;;
+        templates) echo "Document templates ${DIM}(articles, solutions, CV)${NC}" ;;
     esac
 }
 
@@ -904,109 +916,13 @@ if is_selected "noto"; then
     fi
 fi
 
-# ── Install: LyX configuration ──────────────────────
+# ── Shared helper for LyX templates ─────────────────
 
-if is_selected "config"; then
-    step "LyX configuration"
-    mkdir -p "$LYX_DIR/bind" "$LYX_DIR/templates"
-
-    # Back up existing files
-    for f in preferences bind/user.bind; do
-        [ -f "$LYX_DIR/$f" ] && cp "$LYX_DIR/$f" "$LYX_DIR/$f.bak.$(date +%s)" 2>/dev/null
-        ls -t "$LYX_DIR/$f".bak.* 2>/dev/null | tail -n +4 | xargs rm -f 2>/dev/null || true
-    done
-
-    # Preferences — only non-default settings (matches LyX 2.4.4 on macOS)
-    cat > "$LYX_DIR/preferences" << 'EOF'
-Format 38
-
-\bind_file "user"
-\gui_language english
-
-#
-# MISC SECTION ######################################
-#
-
-\path_prefix "/Library/TeX/texbin:/usr/texbin:/opt/homebrew/bin:/opt/local/bin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin"
-\kbmap true
-\kbmap_primary "null"
-\kbmap_secondary "hebrew"
-\preview no_math
-\preview_scale_factor 0.8
-
-#
-# SCREEN & FONTS SECTION ############################
-#
-
-\scroll_below_document true
-\screen_font_roman "David CLM"
-\screen_font_sans "Simple CLM"
-\screen_font_typewriter "Miriam Mono CLM"
-\screen_font_sizes 5 7 8 9 10 12 14.4 17.26 20.74 24.88
-\open_buffers_in_tabs true
-
-#
-# LANGUAGE SUPPORT SECTION ##########################
-#
-
-\spellcheck_continuously false
-\visual_cursor true
-\language_custom_package ""
-
-#
-# 2nd MISC SUPPORT SECTION ##########################
-#
-
-\scroll_wheel_zoom ctrl
-\default_otf_view_format pdf4
-
-#
-# COMPLETION SECTION ##########################
-#
-
-\completion_inline_math true
-\completion_inline_text false
-\completion_popup_math true
-\completion_popup_text false
-\completion_inline_delay 0.2
-\completion_popup_delay 0.3
-\completion_minlength 3
-EOF
-
-    ok "Preferences written"
-
-    # Keybindings — F12 for Hebrew (Madlyx guide, page 16)
-    cat > "$LYX_DIR/bind/user.bind" << 'EOF'
-## user.bind — Hebrew keybindings (Madlyx guide)
-## Keep OS keyboard on English. Use F12 to toggle Hebrew inside LyX.
-
-Format 5
-
-\bind_file "mac"
-
-\bind "F12"    "language hebrew"
-\bind "S-F12"  "language english"
-
-# Rebind Cmd+E and Cmd+I to emphasis (italic) — macOS Option key
-# produces Greek/accents, so the default Cmd+Alt+E never reaches LyX
-\bind "C-e" "font-emph"
-\bind "C-M-e" "search-string-set"
-\bind "C-i" "font-emph"
-\bind "C-M-i" "inset-toggle"
-EOF
-
-    ok "Keybindings written (F12 = Hebrew, Shift+F12 = English)"
-
-    # ── Hebrew document templates ─────────────────────
-
-    info "Writing document templates..."
-
-    # Shared document header for templates
-    write_lyx_template() {
-        local file="$1"
-        local body="$2"
-        local extra_preamble="${3:-}"
-        cat > "$file" << 'PREAMBLE'
+write_lyx_template() {
+    local file="$1"
+    local body="$2"
+    local extra_preamble="${3:-}"
+    cat > "$file" << 'PREAMBLE'
 #LyX 2.5 created this file. For more info see https://www.lyx.org/
 \lyxformat 643
 \begin_document
@@ -1034,8 +950,8 @@ EOF
 \usepackage{ucharclasses}
 \setTransitionsForLatin{\begingroup\rmfamily}{\endgroup}
 PREAMBLE
-        [ -n "$extra_preamble" ] && printf '\n%s\n' "$extra_preamble" >> "$file"
-        cat >> "$file" << 'HEADER'
+    [ -n "$extra_preamble" ] && printf '\n%s\n' "$extra_preamble" >> "$file"
+    cat >> "$file" << 'HEADER'
 \end_preamble
 \use_default_options true
 \begin_modules
@@ -1128,13 +1044,106 @@ eqs-within-sections
 \docbook_mathml_version 0
 \end_header
 HEADER
-        # NOTE: \use_hyperref is false because hyperref is loaded manually in the
-        # preamble with unicode=false (required for correct Hebrew PDF bookmarks).
-        # The theorems-ams modules are known to have potential RTL issues with
-        # amsthm — if theorem numbering appears reversed, wrap with \L{}.
-        echo "" >> "$file"
-        printf '%s\n' "$body" >> "$file"
-    }
+    # NOTE: \use_hyperref is false because hyperref is loaded manually in the
+    # preamble with unicode=false (required for correct Hebrew PDF bookmarks).
+    # The theorems-ams modules are known to have potential RTL issues with
+    # amsthm — if theorem numbering appears reversed, wrap with \L{}.
+    echo "" >> "$file"
+    printf '%s\n' "$body" >> "$file"
+}
+
+# ── Install: LyX configuration ──────────────────────
+
+if is_selected "config"; then
+    step "LyX preferences & keybindings"
+    mkdir -p "$LYX_DIR/bind" "$LYX_DIR/templates"
+
+    # Back up existing files
+    for f in preferences bind/user.bind; do
+        [ -f "$LYX_DIR/$f" ] && cp "$LYX_DIR/$f" "$LYX_DIR/$f.bak.$(date +%s)" 2>/dev/null
+        ls -t "$LYX_DIR/$f".bak.* 2>/dev/null | tail -n +4 | xargs rm -f 2>/dev/null || true
+    done
+
+    # Preferences — only non-default settings (matches LyX 2.4.4 on macOS)
+    cat > "$LYX_DIR/preferences" << 'EOF'
+Format 38
+
+\bind_file "user"
+\gui_language english
+
+#
+# MISC SECTION ######################################
+#
+
+\path_prefix "/Library/TeX/texbin:/usr/texbin:/opt/homebrew/bin:/opt/local/bin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin"
+\kbmap true
+\kbmap_primary "null"
+\kbmap_secondary "hebrew"
+\preview no_math
+\preview_scale_factor 0.8
+
+#
+# SCREEN & FONTS SECTION ############################
+#
+
+\scroll_below_document true
+\screen_font_roman "David CLM"
+\screen_font_sans "Simple CLM"
+\screen_font_typewriter "Miriam Mono CLM"
+\screen_font_sizes 5 7 8 9 10 12 14.4 17.26 20.74 24.88
+\open_buffers_in_tabs true
+
+#
+# LANGUAGE SUPPORT SECTION ##########################
+#
+
+\spellcheck_continuously false
+\visual_cursor true
+\language_custom_package ""
+
+#
+# 2nd MISC SUPPORT SECTION ##########################
+#
+
+\scroll_wheel_zoom ctrl
+\default_otf_view_format pdf4
+
+#
+# COMPLETION SECTION ##########################
+#
+
+\completion_inline_math true
+\completion_inline_text false
+\completion_popup_math true
+\completion_popup_text false
+\completion_inline_delay 0.2
+\completion_popup_delay 0.3
+\completion_minlength 3
+EOF
+
+    ok "Preferences written"
+
+    # Keybindings — F12 for Hebrew (Madlyx guide, page 16)
+    cat > "$LYX_DIR/bind/user.bind" << 'EOF'
+## user.bind — Hebrew keybindings (Madlyx guide)
+## Keep OS keyboard on English. Use F12 to toggle Hebrew inside LyX.
+
+Format 5
+
+\bind_file "mac"
+
+\bind "F12"    "language hebrew"
+\bind "S-F12"  "language english"
+
+# Rebind Cmd+E and Cmd+I to emphasis (italic) — macOS Option key
+# produces Greek/accents, so the default Cmd+Alt+E never reaches LyX
+\bind "C-e" "font-emph"
+\bind "C-M-e" "search-string-set"
+\bind "C-i" "font-emph"
+\bind "C-M-i" "inset-toggle"
+EOF
+
+    ok "Keybindings written (F12 = Hebrew, Shift+F12 = English)"
 
     # defaults.lyx — used by Cmd+N for new documents
     write_lyx_template "$LYX_DIR/templates/defaults.lyx" '\begin_body
@@ -1147,6 +1156,15 @@ HEADER
 \end_document'
 
     ok "defaults.lyx created (Cmd+N defaults to Hebrew RTL)"
+fi
+
+# ── Install: Document templates ─────────────────────
+
+if is_selected "templates"; then
+    step "Document templates"
+    mkdir -p "$LYX_DIR/templates"
+
+    info "Writing document templates..."
 
     # Hebrew_Article.lyx — template with Title/Author/Date/Abstract/TOC/Section
     write_lyx_template "$LYX_DIR/templates/Hebrew_Article.lyx" '\begin_body
@@ -2839,9 +2857,11 @@ ENDOFCV
 
 
     ok "English_CV.lyx template created"
+fi
 
-    # ── Run LyX Reconfigure ──────────────────────────
+# ── Run LyX Reconfigure ─────────────────────────────
 
+if is_selected "config" || is_selected "templates"; then
     export PATH="/Library/TeX/texbin:$PATH"
     if ! command -v python3 &>/dev/null; then
         warn "python3 not found — run Tools > Reconfigure manually in LyX"
@@ -2894,8 +2914,15 @@ fi
 
 if is_selected "config"; then
     detect_lyx_dir
-    for f in preferences bind/user.bind "${TEMPLATE_FILES[@]}"; do
+    for f in preferences bind/user.bind templates/defaults.lyx; do
         _check "Missing config: $f" test -f "$LYX_DIR/$f"
+    done
+fi
+if is_selected "templates"; then
+    detect_lyx_dir
+    for f in "${TEMPLATE_FILES[@]}"; do
+        [ "$f" = "templates/defaults.lyx" ] && continue
+        _check "Missing template: $f" test -f "$LYX_DIR/$f"
     done
 fi
 
