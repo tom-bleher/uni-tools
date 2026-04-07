@@ -1,58 +1,463 @@
 #!/bin/bash
 #
 # install.sh — Install LyX on macOS (arm/Intel) with Hebrew + XeLaTeX support
-# Based on the Madlyx guide by Kali (Oct 2025)
+# Based on the Madlyx guide by Michael Kali (Oct 2025)
 #
 # Installs: MacTeX, LyX, Culmus + Noto Hebrew fonts
 # Configures: Hebrew RTL, David CLM fonts, F12 language toggle, XeTeX output
 #
-# Prerequisites: Homebrew (https://brew.sh)
-# Usage: chmod +x install.sh && ./install.sh
+# Prerequisites: macOS (Homebrew auto-installed if needed)
+# Usage: ./install.sh [--help | --uninstall | --force | --dry-run]
 #
 
 set -euo pipefail
-trap 'rm -rf "${CULMUS_TMP:-}"' EXIT INT TERM
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
-info()  { echo -e "${BLUE}[INFO]${NC} $1"; }
-ok()    { echo -e "${GREEN}[OK]${NC} $1"; }
-warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
-fail()  { echo -e "${RED}[ERROR]${NC} $1"; }
+# ── Colors & output helpers ──────────────────────────
+BOLD='\033[1m'; DIM='\033[90m'; NC='\033[0m'
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
 
-# ── Flags ─────────────────────────────────────────────
-FORCE=false
-case "${1:-}" in
-    --force) FORCE=true ;;
-    --uninstall)
-        # Detect LyX dir
-        if [ -d "$HOME/Library/Application Support/LyX-2.5" ]; then
-            LYX_DIR="$HOME/Library/Application Support/LyX-2.5"
-        elif [ -d "$HOME/Library/Application Support/LyX-2.4" ]; then
-            LYX_DIR="$HOME/Library/Application Support/LyX-2.4"
-        else
-            fail "No LyX configuration directory found"; exit 1
-        fi
-        warn "Removing LyX configuration files (not LyX itself)..."
-        for f in preferences bind/user.bind templates/defaults.lyx \
-                 templates/Hebrew_Article.lyx templates/English_Article.lyx; do
-            [ -f "$LYX_DIR/$f" ] && rm "$LYX_DIR/$f" && ok "Removed $f"
+info()    { echo -e "  ${CYAN}●${NC} $1"; }
+ok()      { echo -e "  ${GREEN}✓${NC} $1"; }
+warn()    { echo -e "  ${YELLOW}⚠${NC} $1"; }
+fail()    { echo -e "  ${RED}✗${NC} $1"; }
+
+# ── Log file ────────────────────────────────────────
+LOG_FILE="$HOME/.lyx-he-install.log"
+echo "" >> "$LOG_FILE"
+echo "═══ lyx-he install — $(date) ═══" >> "$LOG_FILE"
+log() { echo "[$(date '+%H:%M:%S')] $*" >> "$LOG_FILE"; }
+
+# ── Spinner for long-running commands ────────────────
+# Usage: run_with_spinner "message" command [args...]
+# Redirects stdout/stderr to the log file, shows a spinner with elapsed time.
+_bg_cmd_pid=""
+run_with_spinner() {
+    local msg="$1"; shift
+    local spin_chars='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local cmd_start=$SECONDS
+
+    log "Running: $*"
+
+    # Start the command in the background, redirecting to log
+    "$@" >> "$LOG_FILE" 2>&1 &
+    _bg_cmd_pid=$!
+
+    # Show spinner if interactive
+    if [ -t 1 ]; then
+        printf '\e[?25l'  # hide cursor
+        while kill -0 "$_bg_cmd_pid" 2>/dev/null; do
+            local el=$(( SECONDS - cmd_start ))
+            local ts
+            if [ "$el" -ge 60 ]; then
+                ts=$(printf '%dm%02ds' $((el / 60)) $((el % 60)))
+            else
+                ts=$(printf '%ds' "$el")
+            fi
+            for ((c = 0; c < ${#spin_chars}; c++)); do
+                kill -0 "$_bg_cmd_pid" 2>/dev/null || break
+                printf '\r  %s %s %s' "${spin_chars:$c:1}" "$msg" "${DIM}${ts}${NC}"
+                sleep 0.08
+            done
         done
-        info "Run Tools > Reconfigure in LyX to restore defaults"
-        exit 0
-        ;;
-    "") ;; # no flag
-    *) fail "Unknown flag: $1. Use --force or --uninstall."; exit 1 ;;
+        printf '\r\e[2K'  # clear spinner line
+        printf '\e[?25h'  # restore cursor
+    else
+        # Non-interactive: print periodic status to stderr
+        while kill -0 "$_bg_cmd_pid" 2>/dev/null; do
+            sleep 10
+            printf '.' >&2
+        done
+        printf '\n' >&2
+    fi
+
+    wait "$_bg_cmd_pid"
+    local rc=$?
+    _bg_cmd_pid=""
+    log "Exit code: $rc"
+    if [ "$rc" -ne 0 ]; then
+        fail "$msg — failed (see $LOG_FILE)"
+        echo -e "  ${DIM}Last 5 lines of log:${NC}"
+        tail -5 "$LOG_FILE" | while IFS= read -r line; do
+            echo -e "  ${DIM}  $line${NC}"
+        done
+    fi
+    return "$rc"
+}
+
+# Section header with horizontal rule
+header() {
+    local text="$1"
+    local rule; printf -v rule '─%.0s' $(seq 1 50)
+    echo ""
+    echo -e "  ${DIM}${rule}${NC}"
+    echo -e "  ${BOLD}${text}${NC}"
+    echo -e "  ${DIM}${rule}${NC}"
+}
+
+# Progress step counter (set _total and _cur=0 before first call)
+_cur=0; _total=0; _step_start=0
+step() {
+    _cur=$((_cur + 1))
+    _step_start=$SECONDS
+    local filled=$(( _cur * 20 / _total ))
+    local empty=$(( 20 - filled ))
+    local bar=""
+    for ((i = 0; i < filled; i++)); do bar+="━"; done
+    for ((i = 0; i < empty; i++)); do bar+="╌"; done
+    echo ""
+    echo -e "  ${BOLD}[${_cur}/${_total}]${NC} ${CYAN}${bar}${NC}  ${BOLD}$1${NC}"
+}
+
+# Format elapsed time since last step()
+fmt_elapsed() {
+    local el=$(( SECONDS - _step_start ))
+    if [ "$el" -ge 60 ]; then
+        printf '%dm%02ds' $((el / 60)) $((el % 60))
+    else
+        printf '%ds' "$el"
+    fi
+}
+
+# ── Sudo keepalive helper ────────────────────────────
+# Call sudo_init to prompt once; a background loop keeps the ticket alive.
+_sudo_keepalive_pid=""
+sudo_init() {
+    if [ -t 0 ]; then
+        info "Requesting administrator privileges (once)..."
+        sudo -v || { fail "sudo authentication failed"; exit 1; }
+        # Refresh sudo timestamp every 50s in the background
+        while true; do sudo -n true; sleep 50; done 2>/dev/null &
+        _sudo_keepalive_pid=$!
+    fi
+}
+
+# ── Cleanup ──────────────────────────────────────────
+cleanup() {
+    if [ -n "$_bg_cmd_pid" ]; then
+        kill "$_bg_cmd_pid" 2>/dev/null || true
+    fi
+    if [ -n "$_sudo_keepalive_pid" ]; then
+        kill "$_sudo_keepalive_pid" 2>/dev/null || true
+    fi
+    if [ -t 1 ]; then printf '\e[?25h' 2>/dev/null; fi   # restore cursor visibility
+    rm -rf "${CULMUS_TMP:-}"
+    rm -rf "${TEST_DIR:-}"
+}
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT TERM
+
+# ── TUI: Interactive checkbox selector ───────────────
+# Set TUI_ITEMS (labels) and TUI_CHECKED (0/1) before calling.
+# After return, TUI_CHECKED reflects the user's choices.
+tui_checkbox() {
+    local title="$1"
+    local n=${#TUI_ITEMS[@]}
+    local cur=0
+
+    # Non-interactive fallback: keep pre-set state
+    if [ ! -t 0 ] || [ ! -t 1 ]; then return 0; fi
+
+    # ── Frame dimensions ──
+    local max_item=0
+    for ((i = 0; i < n; i++)); do
+        [ ${#TUI_ITEMS[i]} -gt "$max_item" ] && max_item=${#TUI_ITEMS[i]}
+    done
+    local hint="↑↓ navigate · Space toggle · a/n all/none · Enter confirm"
+    local inner=$(( max_item + 10 ))
+    [ $(( ${#hint} + 4 )) -gt "$inner" ] && inner=$(( ${#hint} + 4 ))
+    [ $(( ${#title} + 5 )) -gt "$inner" ] && inner=$(( ${#title} + 5 ))
+
+    local hrule; printf -v hrule '─%.0s' $(seq 1 "$inner")
+    local title_rule; printf -v title_rule '─%.0s' $(seq 1 $(( inner - ${#title} - 3 )))
+    local spacer; printf -v spacer '%*s' "$inner" ""
+    local total_lines=$(( n + 6 ))
+
+    printf '\e[?25l'  # hide cursor
+    echo ""
+
+    __tui_draw() {
+        printf '\r\e[2K  ╭─ \e[1m%s\e[0m %s╮\n' "$title" "$title_rule"
+        printf '\r\e[2K  │%s│\n' "$spacer"
+        for ((i = 0; i < n; i++)); do
+            local pad_n=$(( inner - 7 - ${#TUI_ITEMS[i]} ))
+            local pad; printf -v pad '%*s' "$pad_n" ""
+            if [ "$i" -eq "$cur" ]; then
+                if [ "${TUI_CHECKED[i]}" = "1" ]; then
+                    printf '\r\e[2K  │ \e[36m▸\e[0m [\e[36m✓\e[0m] \e[1m%s\e[0m%s│\n' "${TUI_ITEMS[i]}" "$pad"
+                else
+                    printf '\r\e[2K  │ \e[36m▸\e[0m [ ] \e[1m%s\e[0m%s│\n' "${TUI_ITEMS[i]}" "$pad"
+                fi
+            else
+                if [ "${TUI_CHECKED[i]}" = "1" ]; then
+                    printf '\r\e[2K  │   [\e[36m✓\e[0m] %s%s│\n' "${TUI_ITEMS[i]}" "$pad"
+                else
+                    printf '\r\e[2K  │   [ ] \e[90m%s\e[0m%s│\n' "${TUI_ITEMS[i]}" "$pad"
+                fi
+            fi
+        done
+        printf '\r\e[2K  │%s│\n' "$spacer"
+        printf '\r\e[2K  ├%s┤\n' "$hrule"
+        local hpad_n=$(( inner - ${#hint} - 2 ))
+        local hpad; printf -v hpad '%*s' "$hpad_n" ""
+        printf '\r\e[2K  │ \e[90m%s\e[0m%s │\n' "$hint" "$hpad"
+        printf '\r\e[2K  ╰%s╯\n' "$hrule"
+    }
+
+    __tui_draw
+
+    while true; do
+        IFS= read -rsn1 key 2>/dev/null || true
+        if [ "$key" = $'\x1b' ]; then
+            IFS= read -rsn2 seq 2>/dev/null || true
+            case "$seq" in
+                '[A') [ "$cur" -gt 0 ] && cur=$((cur - 1)) ;;
+                '[B') [ "$cur" -lt $((n - 1)) ] && cur=$((cur + 1)) ;;
+            esac
+        elif [ "$key" = 'k' ]; then
+            [ "$cur" -gt 0 ] && cur=$((cur - 1))
+        elif [ "$key" = 'j' ]; then
+            [ "$cur" -lt $((n - 1)) ] && cur=$((cur + 1))
+        elif [ "$key" = ' ' ]; then
+            TUI_CHECKED[cur]=$(( 1 - TUI_CHECKED[cur] ))
+        elif [ "$key" = 'a' ]; then
+            for ((i = 0; i < n; i++)); do TUI_CHECKED[i]=1; done
+        elif [ "$key" = 'n' ]; then
+            for ((i = 0; i < n; i++)); do TUI_CHECKED[i]=0; done
+        elif [ "$key" = '' ]; then
+            break  # Enter
+        fi
+        printf '\e[%dA' "$total_lines"
+        __tui_draw
+    done
+
+    printf '\e[?25h'  # restore cursor
+    echo ""
+    local _sel=0
+    for ((i = 0; i < n; i++)); do [ "${TUI_CHECKED[i]}" = "1" ] && _sel=$((_sel + 1)); done
+    echo -e "  ${DIM}${_sel} of ${n} selected${NC}"
+}
+
+# ── Usage ────────────────────────────────────────────
+usage() {
+    echo ""
+    echo -e "  ${BOLD}lyx-he${NC} — Hebrew LyX installer for macOS"
+    echo ""
+    echo -e "  ${BOLD}Usage:${NC}  ./install.sh [OPTIONS]"
+    echo ""
+    echo -e "  ${BOLD}Options:${NC}"
+    echo -e "    ${CYAN}(none)${NC}           Interactive component picker ${DIM}(default)${NC}"
+    echo -e "    ${CYAN}--force, -f${NC}      Install all components without prompting"
+    echo -e "    ${CYAN}--dry-run${NC}        Show what would be installed without doing anything"
+    echo -e "    ${CYAN}--uninstall${NC}      Interactively select components to remove"
+    echo -e "    ${CYAN}--help, -h${NC}       Show this help message"
+    echo ""
+    echo -e "  ${DIM}The script is idempotent — already-installed components are skipped.${NC}"
+    echo ""
+}
+
+# ── Detect LyX config directory ──────────────────────
+detect_lyx_dir() {
+    local latest=""
+    for d in "$HOME/Library/Application Support"/LyX-*; do
+        [ -d "$d" ] && latest="$d"
+    done
+    if [ -n "$latest" ]; then
+        LYX_DIR="$latest"
+    else
+        LYX_DIR="$HOME/Library/Application Support/LyX-2.5"
+    fi
+}
+
+# ── Flags ────────────────────────────────────────────
+FORCE=false
+UNINSTALL=false
+DRY_RUN=false
+case "${1:-}" in
+    --help|-h)      usage; exit 0 ;;
+    --force|-f)     FORCE=true ;;
+    --dry-run)      DRY_RUN=true ;;
+    --uninstall)    UNINSTALL=true ;;
+    "") ;;
+    *) fail "Unknown flag: $1"; echo ""; usage; exit 1 ;;
 esac
 
-# Detect installed LyX version directory
-if [ -d "$HOME/Library/Application Support/LyX-2.5" ]; then
-    LYX_DIR="$HOME/Library/Application Support/LyX-2.5"
-elif [ -d "$HOME/Library/Application Support/LyX-2.4" ]; then
-    LYX_DIR="$HOME/Library/Application Support/LyX-2.4"
-else
-    # Default for fresh install (LyX 2.5 is current)
-    LYX_DIR="$HOME/Library/Application Support/LyX-2.5"
+if [ $# -gt 1 ]; then
+    fail "Only one option allowed at a time"; echo ""; usage; exit 1
 fi
+
+INSTALL_START=$SECONDS
+
+# ── Uninstall flow ───────────────────────────────────
+if $UNINSTALL; then
+    detect_lyx_dir
+    header "Uninstall"
+
+    TUI_ITEMS=()
+    TUI_CHECKED=()
+    UNINSTALL_ACTIONS=()
+
+    # Config files
+    _has_config=false
+    for f in preferences bind/user.bind; do
+        [ -f "$LYX_DIR/$f" ] && _has_config=true
+    done
+    if $_has_config; then
+        TUI_ITEMS+=("LyX preferences & keybindings")
+        TUI_CHECKED+=(1)
+        UNINSTALL_ACTIONS+=("config")
+    fi
+
+    # Templates
+    _has_templates=false
+    for f in templates/defaults.lyx templates/Hebrew_Article.lyx templates/English_Article.lyx; do
+        [ -f "$LYX_DIR/$f" ] && _has_templates=true
+    done
+    if $_has_templates; then
+        TUI_ITEMS+=("LyX templates (defaults, Hebrew, English)")
+        TUI_CHECKED+=(1)
+        UNINSTALL_ACTIONS+=("templates")
+    fi
+
+    # Backups
+    _backup_count=0
+    for bak in "$LYX_DIR"/preferences.bak.* "$LYX_DIR"/bind/user.bind.bak.*; do
+        [ -f "$bak" ] && _backup_count=$((_backup_count + 1))
+    done
+    if [ "$_backup_count" -gt 0 ]; then
+        TUI_ITEMS+=("Configuration backups ($_backup_count files)")
+        TUI_CHECKED+=(1)
+        UNINSTALL_ACTIONS+=("backups")
+    fi
+
+    # Culmus fonts
+    if fc-list 2>/dev/null | grep -qi "David CLM"; then
+        TUI_ITEMS+=("Culmus Hebrew fonts (~/Library/Fonts/*CLM*)")
+        TUI_CHECKED+=(0)
+        UNINSTALL_ACTIONS+=("culmus")
+    fi
+
+    # Noto fonts
+    _NOTO_INSTALLED=()
+    for cask in font-noto-sans-hebrew font-noto-serif-hebrew font-noto-rashi-hebrew; do
+        brew list --cask "$cask" &>/dev/null && _NOTO_INSTALLED+=("$cask")
+    done
+    if [ ${#_NOTO_INSTALLED[@]} -gt 0 ]; then
+        TUI_ITEMS+=("Noto Hebrew fonts (${#_NOTO_INSTALLED[@]} casks)")
+        TUI_CHECKED+=(0)
+        UNINSTALL_ACTIONS+=("noto")
+    fi
+
+    # LyX application
+    if [ -d "/Applications/LyX.app" ]; then
+        TUI_ITEMS+=("LyX application")
+        TUI_CHECKED+=(0)
+        UNINSTALL_ACTIONS+=("lyx")
+    fi
+
+    # MacTeX
+    if [ -f /Library/TeX/texbin/xelatex ]; then
+        TUI_ITEMS+=("MacTeX (~6 GB)")
+        TUI_CHECKED+=(0)
+        UNINSTALL_ACTIONS+=("mactex")
+    fi
+
+    if [ ${#TUI_ITEMS[@]} -eq 0 ]; then
+        info "Nothing found to uninstall."
+        exit 0
+    fi
+
+    tui_checkbox "Select components to remove:"
+
+    # Check if anything selected
+    _any=false
+    for ((i = 0; i < ${#TUI_ITEMS[@]}; i++)); do
+        [ "${TUI_CHECKED[i]}" = "1" ] && _any=true
+    done
+    if ! $_any; then
+        info "Nothing selected."
+        exit 0
+    fi
+
+    # Show what will be removed and confirm
+    echo ""
+    echo -e "  ${BOLD}The following will be removed:${NC}"
+    for ((i = 0; i < ${#TUI_ITEMS[@]}; i++)); do
+        [ "${TUI_CHECKED[i]}" = "1" ] && echo -e "    ${RED}▸${NC} ${TUI_ITEMS[i]}"
+    done
+    echo ""
+    if [ -t 0 ]; then
+        echo -ne "  ${YELLOW}This cannot be undone.${NC} Continue? [y/N] "
+        read -r _confirm
+        case "$_confirm" in
+            [yY]|[yY][eE][sS]) ;;
+            *) info "Cancelled."; exit 0 ;;
+        esac
+    fi
+
+    # Prompt for sudo once if MacTeX uninstall is selected
+    _uninstall_needs_sudo=false
+    for ((i = 0; i < ${#UNINSTALL_ACTIONS[@]}; i++)); do
+        [ "${TUI_CHECKED[i]}" = "1" ] && [ "${UNINSTALL_ACTIONS[i]}" = "mactex" ] && _uninstall_needs_sudo=true
+    done
+    if $_uninstall_needs_sudo; then sudo_init; fi
+
+    # Execute removals
+    for ((i = 0; i < ${#UNINSTALL_ACTIONS[@]}; i++)); do
+        [ "${TUI_CHECKED[i]}" = "1" ] || continue
+        case "${UNINSTALL_ACTIONS[i]}" in
+            config)
+                for f in preferences bind/user.bind; do
+                    [ -f "$LYX_DIR/$f" ] && rm "$LYX_DIR/$f" && ok "Removed $f"
+                done
+                ;;
+            templates)
+                for f in templates/defaults.lyx templates/Hebrew_Article.lyx templates/English_Article.lyx; do
+                    [ -f "$LYX_DIR/$f" ] && rm "$LYX_DIR/$f" && ok "Removed $f"
+                done
+                ;;
+            backups)
+                rm -f "$LYX_DIR"/preferences.bak.* "$LYX_DIR"/bind/user.bind.bak.* 2>/dev/null || true
+                ok "Removed $_backup_count backup files"
+                ;;
+            culmus)
+                rm -f "$HOME"/Library/Fonts/*CLM*.otf "$HOME"/Library/Fonts/*CLM*.ttf 2>/dev/null || true
+                ok "Removed Culmus fonts"
+                ;;
+            noto)
+                if brew uninstall --cask "${_NOTO_INSTALLED[@]}" 2>/dev/null; then
+                    ok "Removed Noto Hebrew fonts"
+                else
+                    warn "Failed to remove some Noto fonts"
+                fi
+                ;;
+            lyx)
+                if brew uninstall --cask lyx 2>/dev/null; then
+                    ok "Removed LyX"
+                else
+                    warn "Failed to remove LyX via Homebrew"
+                fi
+                ;;
+            mactex)
+                if brew uninstall --cask mactex 2>/dev/null; then
+                    ok "Removed MacTeX"
+                else
+                    warn "Failed to remove MacTeX via Homebrew"
+                fi
+                ;;
+        esac
+    done
+
+    echo ""
+    ok "Uninstall complete."
+    [ -d "/Applications/LyX.app" ] && info "Run Tools > Reconfigure in LyX to restore defaults."
+    echo ""
+    exit 0
+fi
+
+# ═══════════════════════════════════════════════════════
+#  INSTALL FLOW
+# ═══════════════════════════════════════════════════════
 
 echo ""
 # Colored LyX logo (generated from Lyx_Logo.svg via ascii-image-converter)
@@ -221,116 +626,283 @@ MG0gG1swbRtbMzg7Mjs0MDszMDswbS4bWzBtG1szODsyOzU1OzQyOzBtLhtbMG0bWzM4OzI7NzY7NTc7
 MG06G1swbRtbMzg7MjszMjsyNDswbSAbWzBt'
 echo "$LYX_LOGO_B64" | base64 -d
 echo ""
-echo "  Hebrew Installer for macOS"
-echo "  Based on the Madlyx guide by Kali"
+echo -e "  ${BOLD}Hebrew Installer for macOS${NC}"
+echo -e "  ${DIM}Based on the Madlyx guide by Michael Kali${NC}"
 echo ""
 
-# ── Prerequisites ─────────────────────────────────────
+header "Prerequisites"
 
 if ! command -v brew &>/dev/null; then
-    fail "Homebrew is not installed. Install it from https://brew.sh"
-    exit 1
-fi
-ok "Homebrew found"
+    warn "Homebrew is not installed"
+    if [ -t 0 ]; then
+        echo -ne "  Install Homebrew now? [Y/n] "
+        read -r _brew_confirm
+        case "$_brew_confirm" in
+            [nN]|[nN][oO])
+                fail "Homebrew is required. Install it from https://brew.sh"
+                exit 1
+                ;;
+        esac
+        info "Installing Homebrew (this will ask for your password)..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# ── Confirm before installing ─────────────────────────
+        # Add brew to PATH for the rest of this script (Apple Silicon vs Intel)
+        if [ -f /opt/homebrew/bin/brew ]; then
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+        elif [ -f /usr/local/bin/brew ]; then
+            eval "$(/usr/local/bin/brew shellenv)"
+        fi
 
-echo ""
-info "This script will install (skipping what you already have):"
-[ -f /Library/TeX/texbin/xelatex ]  || echo "  • MacTeX (~6 GB download)"
-[ -d "/Applications/LyX.app" ]      || echo "  • LyX"
-fc-list 2>/dev/null | grep -qi "David CLM" || echo "  • Culmus Hebrew fonts"
-echo "  • Noto Hebrew fonts (Sans, Serif, Rashi)"
-echo "  • LyX preferences, keybindings & templates"
-echo ""
-read -rp "Continue? [Y/n] " REPLY
-if [[ "$REPLY" =~ ^[Nn] ]]; then
-    echo "Aborted."
-    exit 0
-fi
-echo ""
-
-# ── Step 1: MacTeX ────────────────────────────────────
-
-info "Step 1/6: MacTeX..."
-if [ -f /Library/TeX/texbin/xelatex ]; then
-    ok "MacTeX already installed"
-else
-    info "Installing MacTeX (~6 GB download, requires sudo)..."
-    brew install --cask mactex
-    eval "$(/usr/libexec/path_helper)" 2>/dev/null
-    [ -f /Library/TeX/texbin/xelatex ] && ok "MacTeX installed" \
-        || warn "MacTeX installed but xelatex not on PATH. Restart your terminal."
-fi
-
-# ── Step 2: LyX ──────────────────────────────────────
-
-info "Step 2/6: LyX..."
-if [ -d "/Applications/LyX.app" ]; then
-    ok "LyX already installed"
-else
-    # NOTE: The LyX Homebrew cask is deprecated (Gatekeeper issue, disabled Sept 2026).
-    # If this fails in the future, download directly from https://www.lyx.org/Download
-    brew install --cask lyx
-    if [ -d "/Applications/LyX.app" ]; then
-        ok "LyX installed"
-        info "First launch: right-click LyX.app > Open to bypass Gatekeeper"
+        if ! command -v brew &>/dev/null; then
+            fail "Homebrew installation failed"
+            exit 1
+        fi
+        ok "Homebrew installed"
     else
-        fail "LyX installation failed. Download manually from https://www.lyx.org/Download"
+        fail "Homebrew is required. Install it from https://brew.sh"
         exit 1
     fi
-fi
-
-# ── Step 3: Culmus Hebrew fonts ──────────────────────
-
-info "Step 3/6: Culmus Hebrew fonts..."
-if fc-list 2>/dev/null | grep -qi "David CLM"; then
-    ok "Culmus fonts already installed"
 else
-    CULMUS_TMP=$(mktemp -d)
-    info "Downloading Culmus 0.140..."
-    curl -#L -o "$CULMUS_TMP/culmus.tar.gz" \
-        "https://sourceforge.net/projects/culmus/files/culmus/0.140/culmus-0.140.tar.gz/download"
-    tar xzf "$CULMUS_TMP/culmus.tar.gz" -C "$CULMUS_TMP"
-
-    mkdir -p "$HOME/Library/Fonts"
-    # Copy all CLM font files (.otf and .ttf) — Culmus 0.140 ships OpenType
-    cp "$CULMUS_TMP"/culmus-0.140/*CLM*.otf "$CULMUS_TMP"/culmus-0.140/*CLM*.ttf \
-       "$HOME/Library/Fonts/" 2>/dev/null || true
-    rm -rf "$CULMUS_TMP"
-
-    FONT_COUNT=$(ls "$HOME"/Library/Fonts/*CLM* 2>/dev/null | wc -l | tr -d ' ')
-    ok "Installed $FONT_COUNT Culmus font files"
+    ok "Homebrew found"
 fi
 
-# ── Step 4: Noto Hebrew fonts ─────────────────────────
+# ── Detect installed components ───────────────────────
 
-info "Step 4/6: Noto Hebrew fonts..."
+detect_lyx_dir
+
+_HAS_MACTEX=false; [ -f /Library/TeX/texbin/xelatex ] && _HAS_MACTEX=true
+_HAS_LYX=false;    [ -d "/Applications/LyX.app" ]     && _HAS_LYX=true
+_HAS_CULMUS=false; if fc-list 2>/dev/null | grep -qi "David CLM"; then _HAS_CULMUS=true; fi
+CULMUS_VERSION="0.140"
+
 NOTO_FONTS=(font-noto-sans-hebrew font-noto-serif-hebrew font-noto-rashi-hebrew)
 NOTO_MISSING=()
 for cask in "${NOTO_FONTS[@]}"; do
     brew list --cask "$cask" &>/dev/null || NOTO_MISSING+=("$cask")
 done
-if [ ${#NOTO_MISSING[@]} -eq 0 ]; then
-    ok "Noto Hebrew fonts already installed"
+_HAS_NOTO=false; [ ${#NOTO_MISSING[@]} -eq 0 ] && _HAS_NOTO=true
+
+# ── Build install menu ────────────────────────────────
+
+TUI_ITEMS=()
+TUI_CHECKED=()
+INSTALL_ACTIONS=()
+
+_label="MacTeX — full TeX Live distribution (~6 GB)";    $_HAS_MACTEX && _label+=" (installed)"
+TUI_ITEMS+=("$_label"); TUI_CHECKED+=(1); INSTALL_ACTIONS+=("mactex")
+
+_label="LyX — WYSIWYM document editor";                  $_HAS_LYX && _label+=" (installed)"
+TUI_ITEMS+=("$_label"); TUI_CHECKED+=(1); INSTALL_ACTIONS+=("lyx")
+
+_label="Culmus Hebrew fonts (David CLM, Miriam, etc.)";  $_HAS_CULMUS && _label+=" (installed)"
+TUI_ITEMS+=("$_label"); TUI_CHECKED+=(1); INSTALL_ACTIONS+=("culmus")
+
+_label="Noto Hebrew fonts (Sans, Serif, Rashi)";         $_HAS_NOTO && _label+=" (installed)"
+TUI_ITEMS+=("$_label"); TUI_CHECKED+=(1); INSTALL_ACTIONS+=("noto")
+
+TUI_ITEMS+=("LyX configuration (preferences, keybindings, templates)")
+TUI_CHECKED+=(1); INSTALL_ACTIONS+=("config")
+
+if $FORCE; then
+    info "Force mode — installing all components"
 else
-    info "Installing ${NOTO_MISSING[*]}..."
-    brew install --cask "${NOTO_MISSING[@]}"
-    ok "Noto Hebrew fonts installed (Sans, Serif, Rashi)"
+    tui_checkbox "Select components to install:"
 fi
 
-# ── Step 5: LyX preferences + keybindings ────────────
+# Check if anything selected
+_any_selected=false
+for ((i = 0; i < ${#TUI_ITEMS[@]}; i++)); do
+    [ "${TUI_CHECKED[i]}" = "1" ] && _any_selected=true
+done
+if ! $_any_selected; then info "Nothing selected."; exit 0; fi
 
-info "Step 5/6: LyX configuration..."
-mkdir -p "$LYX_DIR/bind" "$LYX_DIR/templates"
+# ── Helpers ───────────────────────────────────────────
 
-# Back up existing files
-for f in preferences bind/user.bind; do
-    [ -f "$LYX_DIR/$f" ] && cp "$LYX_DIR/$f" "$LYX_DIR/$f.bak.$(date +%s)" 2>/dev/null
+is_selected() {
+    local target="$1"
+    for ((i = 0; i < ${#INSTALL_ACTIONS[@]}; i++)); do
+        [ "${INSTALL_ACTIONS[i]}" = "$target" ] && [ "${TUI_CHECKED[i]}" = "1" ] && return 0
+    done
+    return 1
+}
+
+# ── Pre-flight summary ───────────────────────────────
+
+# Build description for each selected action
+_describe_action() {
+    case "$1" in
+        mactex) echo "MacTeX — full TeX Live distribution ${DIM}(~6 GB download)${NC}" ;;
+        lyx)    echo "LyX — WYSIWYM document editor" ;;
+        culmus) echo "Culmus Hebrew fonts ${DIM}(David CLM, Miriam, Frank Ruehl, etc.)${NC}" ;;
+        noto)   echo "Noto Hebrew fonts ${DIM}(Sans, Serif, Rashi)${NC}" ;;
+        config) echo "LyX configuration ${DIM}(preferences, keybindings, templates)${NC}" ;;
+    esac
+}
+
+echo ""
+echo -e "  ${BOLD}About to install:${NC}"
+for ((i = 0; i < ${#INSTALL_ACTIONS[@]}; i++)); do
+    [ "${TUI_CHECKED[i]}" = "1" ] || continue
+    echo -e "    ${CYAN}▸${NC} $(_describe_action "${INSTALL_ACTIONS[i]}")"
 done
 
-# Preferences — only non-default settings (matches LyX 2.4.4 on macOS)
-cat > "$LYX_DIR/preferences" << 'EOF'
+# ── Disk space check ─────────────────────────────────
+
+_needed_gb=1  # base overhead for fonts + config
+is_selected "mactex" && _needed_gb=$((_needed_gb + 8))
+_avail_gb=$(df -g "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')
+if [ -n "$_avail_gb" ] && [ "$_avail_gb" -lt "$_needed_gb" ]; then
+    echo ""
+    warn "Low disk space: ${_avail_gb} GB available, ~${_needed_gb} GB needed"
+    if [ -t 0 ] && ! $FORCE; then
+        echo -ne "  ${YELLOW}Continue anyway?${NC} [y/N] "
+        read -r _ds_confirm
+        case "$_ds_confirm" in
+            [yY]|[yY][eE][sS]) ;;
+            *) info "Cancelled."; exit 0 ;;
+        esac
+    fi
+else
+    echo -e "  ${DIM}  Disk space: ${_avail_gb:-?} GB available${NC}"
+fi
+
+# ── Dry-run exit ─────────────────────────────────────
+
+if $DRY_RUN; then
+    echo ""
+    info "Dry run — no changes were made."
+    echo -e "  ${DIM}Run without --dry-run to install.${NC}"
+    echo ""
+    exit 0
+fi
+
+# ── Confirm ──────────────────────────────────────────
+
+if ! $FORCE && [ -t 0 ]; then
+    echo ""
+    echo -ne "  Proceed? [Y/n] "
+    read -r _confirm
+    case "$_confirm" in
+        [nN]|[nN][oO]) info "Cancelled."; exit 0 ;;
+    esac
+fi
+
+# Prompt for sudo once if MacTeX needs to be installed
+if is_selected "mactex" && ! $_HAS_MACTEX; then
+    sudo_init
+fi
+
+_total=0
+for ((i = 0; i < ${#INSTALL_ACTIONS[@]}; i++)); do
+    [ "${TUI_CHECKED[i]}" = "1" ] && _total=$((_total + 1))
+done
+_cur=0
+
+header "Installation"
+
+# ── Install: MacTeX ──────────────────────────────────
+
+if is_selected "mactex"; then
+    step "MacTeX"
+    if $_HAS_MACTEX; then
+        ok "MacTeX already installed — skipped"
+    else
+        info "Downloading ~6 GB — this will take a while"
+        run_with_spinner "Installing MacTeX" brew install --cask mactex
+        eval "$(/usr/libexec/path_helper)" 2>/dev/null
+        if [ -f /Library/TeX/texbin/xelatex ]; then
+            ok "MacTeX installed ${DIM}($(fmt_elapsed))${NC}"
+        else
+            warn "MacTeX installed but xelatex not on PATH. Restart your terminal."
+        fi
+    fi
+fi
+
+# ── Install: LyX ────────────────────────────────────
+
+if is_selected "lyx"; then
+    step "LyX"
+    if $_HAS_LYX; then
+        ok "LyX already installed — skipped"
+    else
+        # NOTE: The LyX Homebrew cask is deprecated (Gatekeeper issue, disabled Sept 2026).
+        # If this fails in the future, download directly from https://www.lyx.org/Download
+        run_with_spinner "Installing LyX" brew install --cask lyx
+        if [ -d "/Applications/LyX.app" ]; then
+            ok "LyX installed ${DIM}($(fmt_elapsed))${NC}"
+        else
+            fail "LyX installation failed. Download manually from https://www.lyx.org/Download"
+            exit 1
+        fi
+    fi
+fi
+
+# ── Install: Culmus Hebrew fonts ─────────────────────
+
+if is_selected "culmus"; then
+    step "Culmus Hebrew fonts"
+    if $_HAS_CULMUS; then
+        ok "Culmus Hebrew fonts already installed — skipped"
+    else
+        CULMUS_TMP=$(mktemp -d)
+        run_with_spinner "Downloading Culmus $CULMUS_VERSION" \
+            curl -sL -o "$CULMUS_TMP/culmus.tar.gz" \
+            "https://sourceforge.net/projects/culmus/files/culmus/$CULMUS_VERSION/culmus-$CULMUS_VERSION.tar.gz/download"
+
+        CULMUS_SHA256="6daed104481007752a76905000e71c0093c591c8ef3017d1b18222c277fc52e3"
+        if ! echo "$CULMUS_SHA256  $CULMUS_TMP/culmus.tar.gz" | shasum -a 256 -c - >/dev/null 2>&1; then
+            warn "Checksum mismatch — verifying archive contents instead"
+        fi
+
+        # Verify the archive is a valid tarball containing Culmus fonts
+        CLM_COUNT=$(tar tzf "$CULMUS_TMP/culmus.tar.gz" 2>/dev/null | grep -c "CLM" || true)
+        if [ "$CLM_COUNT" -lt 5 ]; then
+            fail "Downloaded file is not a valid Culmus archive ($CLM_COUNT CLM files found, expected ≥5)"
+            fail "Try downloading manually from https://culmus.sourceforge.io/"
+            exit 1
+        fi
+
+        tar xzf "$CULMUS_TMP/culmus.tar.gz" -C "$CULMUS_TMP"
+        mkdir -p "$HOME/Library/Fonts"
+        cp "$CULMUS_TMP"/culmus-"$CULMUS_VERSION"/*CLM*.otf "$HOME/Library/Fonts/"
+        cp "$CULMUS_TMP"/culmus-"$CULMUS_VERSION"/*CLM*.ttf "$HOME/Library/Fonts/" 2>/dev/null || true  # some versions lack .ttf
+        rm -rf "$CULMUS_TMP"
+
+        FONT_COUNT=$(find "$HOME/Library/Fonts" -name '*CLM*' 2>/dev/null | wc -l | tr -d ' ')
+        ok "Installed $FONT_COUNT Culmus font files ${DIM}($(fmt_elapsed))${NC}"
+    fi
+fi
+
+# ── Install: Noto Hebrew fonts ───────────────────────
+
+if is_selected "noto"; then
+    step "Noto Hebrew fonts"
+    if $_HAS_NOTO; then
+        ok "Noto Hebrew fonts already installed — skipped"
+    else
+        if run_with_spinner "Installing Noto Hebrew fonts" brew install --cask "${NOTO_MISSING[@]}"; then
+            ok "Noto Hebrew fonts installed ${DIM}($(fmt_elapsed))${NC}"
+        else
+            fail "Noto Hebrew font installation failed"
+            exit 1
+        fi
+    fi
+fi
+
+# ── Install: LyX configuration ──────────────────────
+
+if is_selected "config"; then
+    step "LyX configuration"
+    mkdir -p "$LYX_DIR/bind" "$LYX_DIR/templates"
+
+    # Back up existing files
+    for f in preferences bind/user.bind; do
+        [ -f "$LYX_DIR/$f" ] && cp "$LYX_DIR/$f" "$LYX_DIR/$f.bak.$(date +%s)" 2>/dev/null
+        ls -t "$LYX_DIR/$f".bak.* 2>/dev/null | tail -n +4 | xargs rm -f 2>/dev/null || true
+    done
+
+    # Preferences — only non-default settings (matches LyX 2.4.4 on macOS)
+    cat > "$LYX_DIR/preferences" << 'EOF'
 Format 38
 
 \bind_file "user"
@@ -386,10 +958,10 @@ Format 38
 \completion_minlength 3
 EOF
 
-ok "Preferences written"
+    ok "Preferences written"
 
-# Keybindings — F12 for Hebrew (Madlyx guide, page 16)
-cat > "$LYX_DIR/bind/user.bind" << 'EOF'
+    # Keybindings — F12 for Hebrew (Madlyx guide, page 16)
+    cat > "$LYX_DIR/bind/user.bind" << 'EOF'
 ## user.bind — Hebrew keybindings (Madlyx guide)
 ## Keep OS keyboard on English. Use F12 to toggle Hebrew inside LyX.
 
@@ -408,17 +980,17 @@ Format 5
 \bind "C-M-i" "inset-toggle"
 EOF
 
-ok "Keybindings written (F12 = Hebrew, Shift+F12 = English)"
+    ok "Keybindings written (F12 = Hebrew, Shift+F12 = English)"
 
-# ── Step 6: Hebrew document templates ─────────────────
+    # ── Hebrew document templates ─────────────────────
 
-info "Step 6/6: Hebrew document templates..."
+    info "Writing document templates..."
 
-# Shared document header for templates
-write_lyx_template() {
-    local file="$1"
-    local body="$2"
-    cat > "$file" << 'HEADER'
+    # Shared document header for templates
+    write_lyx_template() {
+        local file="$1"
+        local body="$2"
+        cat > "$file" << 'HEADER'
 #LyX 2.4 created this file. For more info see https://www.lyx.org/
 \lyxformat 620
 \begin_document
@@ -538,16 +1110,16 @@ eqs-within-sections
 \docbook_mathml_prefix 1
 \end_header
 HEADER
-    # NOTE: \use_hyperref is false because hyperref is loaded manually in the
-    # preamble with unicode=false (required for correct Hebrew PDF bookmarks).
-    # The theorems-ams modules are known to have potential RTL issues with
-    # amsthm — if theorem numbering appears reversed, wrap with \L{}.
-    echo "" >> "$file"
-    echo "$body" >> "$file"
-}
+        # NOTE: \use_hyperref is false because hyperref is loaded manually in the
+        # preamble with unicode=false (required for correct Hebrew PDF bookmarks).
+        # The theorems-ams modules are known to have potential RTL issues with
+        # amsthm — if theorem numbering appears reversed, wrap with \L{}.
+        echo "" >> "$file"
+        printf '%s\n' "$body" >> "$file"
+    }
 
-# defaults.lyx — used by Cmd+N for new documents
-write_lyx_template "$LYX_DIR/templates/defaults.lyx" '\begin_body
+    # defaults.lyx — used by Cmd+N for new documents
+    write_lyx_template "$LYX_DIR/templates/defaults.lyx" '\begin_body
 
 \begin_layout Standard
 
@@ -556,10 +1128,10 @@ write_lyx_template "$LYX_DIR/templates/defaults.lyx" '\begin_body
 \end_body
 \end_document'
 
-ok "defaults.lyx created (Cmd+N defaults to Hebrew RTL)"
+    ok "defaults.lyx created (Cmd+N defaults to Hebrew RTL)"
 
-# Hebrew_Article.lyx — template with Title/Author
-write_lyx_template "$LYX_DIR/templates/Hebrew_Article.lyx" '\begin_body
+    # Hebrew_Article.lyx — template with Title/Author
+    write_lyx_template "$LYX_DIR/templates/Hebrew_Article.lyx" '\begin_body
 
 \begin_layout Title
 
@@ -576,10 +1148,10 @@ write_lyx_template "$LYX_DIR/templates/Hebrew_Article.lyx" '\begin_body
 \end_body
 \end_document'
 
-ok "Hebrew_Article.lyx template created"
+    ok "Hebrew_Article.lyx template created"
 
-# English_Article.lyx — default Overleaf-style English article
-cat > "$LYX_DIR/templates/English_Article.lyx" << 'ENDLYX'
+    # English_Article.lyx — default Overleaf-style English article
+    cat > "$LYX_DIR/templates/English_Article.lyx" << 'ENDLYX'
 #LyX 2.4 created this file. For more info see https://www.lyx.org/
 \lyxformat 620
 \begin_document
@@ -706,52 +1278,70 @@ today
 \end_document
 ENDLYX
 
-ok "English_Article.lyx template created (Overleaf-style)"
+    ok "English_Article.lyx template created (Overleaf-style)"
+
+    # ── Run LyX Reconfigure ──────────────────────────
+
+    export PATH="/Library/TeX/texbin:$PATH"
+    if ! command -v python3 &>/dev/null; then
+        warn "python3 not found — run Tools > Reconfigure manually in LyX"
+    elif [ -f "/Applications/LyX.app/Contents/Resources/configure.py" ]; then
+        if (cd "$LYX_DIR" && run_with_spinner "Running LyX reconfigure" \
+            python3 /Applications/LyX.app/Contents/Resources/configure.py); then
+            ok "LyX reconfigured"
+        else
+            warn "LyX reconfigure failed — run Tools > Reconfigure manually in LyX"
+        fi
+    else
+        warn "LyX configure script not found — run Tools > Reconfigure manually in LyX"
+    fi
+fi
 
 # ── Verification ──────────────────────────────────────
 
-# ── Run LyX Reconfigure ──────────────────────────────
-
-info "Running LyX reconfigure..."
-export PATH="/Library/TeX/texbin:$PATH"
-if ! command -v python3 &>/dev/null; then
-    warn "python3 not found — run Tools > Reconfigure manually in LyX"
-elif [ -f "/Applications/LyX.app/Contents/Resources/configure.py" ]; then
-    (cd "$LYX_DIR" && python3 /Applications/LyX.app/Contents/Resources/configure.py &>/dev/null) \
-        && ok "LyX reconfigured" \
-        || warn "LyX reconfigure failed — run Tools > Reconfigure manually in LyX"
-else
-    warn "LyX configure script not found — run Tools > Reconfigure manually in LyX"
-fi
-
-echo ""
-echo "=============================================="
-echo "  Verification"
-echo "=============================================="
+header "Verification"
 
 eval "$(/usr/libexec/path_helper)" 2>/dev/null
 export PATH="/Library/TeX/texbin:$PATH"
 
-command -v xelatex &>/dev/null \
-    && ok "XeLaTeX: $(xelatex --version 2>/dev/null | head -1)" \
-    || warn "XeLaTeX not on PATH (restart terminal after MacTeX install)"
+_checks=0; _passed=0; _warnings=()
 
-if command -v kpsewhich &>/dev/null; then
-    kpsewhich polyglossia.sty &>/dev/null && ok "polyglossia: available" || warn "polyglossia: NOT FOUND"
-    kpsewhich bidi.sty &>/dev/null && ok "bidi (RTL): available" || warn "bidi (RTL): NOT FOUND"
+_check() {
+    local desc="$1"; shift
+    _checks=$((_checks + 1))
+    if "$@" &>/dev/null; then
+        _passed=$((_passed + 1))
+    else
+        _warnings+=("$desc")
+    fi
+}
+
+# Only check components relevant to what was installed
+if is_selected "mactex" || [ -f /Library/TeX/texbin/xelatex ]; then
+    _check "XeLaTeX not on PATH (restart terminal after MacTeX install)" command -v xelatex
+    _check "polyglossia: NOT FOUND"  kpsewhich polyglossia.sty
+    _check "bidi (RTL): NOT FOUND"   kpsewhich bidi.sty
+fi
+if is_selected "lyx" || [ -d "/Applications/LyX.app" ]; then
+    _check "LyX: not found in /Applications" test -d "/Applications/LyX.app"
+fi
+if is_selected "culmus"; then
+    _check "David CLM font: not found by fc-list" bash -c 'fc-list 2>/dev/null | grep -qi "David CLM"'
+fi
+if is_selected "noto"; then
+    _check "Noto Hebrew fonts: not found by fc-list" bash -c 'fc-list 2>/dev/null | grep -qi "Noto.*Hebrew"'
 fi
 
-[ -d "/Applications/LyX.app" ] && ok "LyX: /Applications/LyX.app" || warn "LyX: not found"
-fc-list 2>/dev/null | grep -qi "David CLM" && ok "David CLM: installed" || warn "David CLM: not found by fc-list"
-fc-list 2>/dev/null | grep -qi "Noto.*Hebrew" && ok "Noto Hebrew: installed" || warn "Noto Hebrew: not found by fc-list"
-
-for f in preferences bind/user.bind templates/defaults.lyx templates/Hebrew_Article.lyx templates/English_Article.lyx; do
-    [ -f "$LYX_DIR/$f" ] && ok "$f" || warn "Missing: $f"
-done
+if is_selected "config"; then
+    detect_lyx_dir
+    for f in preferences bind/user.bind templates/defaults.lyx templates/Hebrew_Article.lyx templates/English_Article.lyx; do
+        _check "Missing config: $f" test -f "$LYX_DIR/$f"
+    done
+fi
 
 # Hebrew XeTeX compilation test
 if command -v xelatex &>/dev/null && fc-list 2>/dev/null | grep -qi "David CLM"; then
-    info "Running Hebrew XeTeX compilation test..."
+    _checks=$((_checks + 1))
     TEST_DIR=$(mktemp -d)
     cat > "$TEST_DIR/test.tex" << 'TEX'
 \documentclass{article}
@@ -772,22 +1362,52 @@ Hello World! \textit{Italic} \textbf{Bold}
 \end{english}
 \end{document}
 TEX
-    xelatex -interaction=nonstopmode -output-directory="$TEST_DIR" "$TEST_DIR/test.tex" &>/dev/null \
-        && ok "Hebrew XeTeX compilation: PASSED" \
-        || warn "Hebrew XeTeX compilation: FAILED"
+    if xelatex -interaction=nonstopmode -output-directory="$TEST_DIR" "$TEST_DIR/test.tex" &>/dev/null; then
+        _passed=$((_passed + 1))
+    else
+        _warnings+=("Hebrew XeTeX compilation: FAILED")
+    fi
     rm -rf "$TEST_DIR"
 fi
 
+if [ "${#_warnings[@]}" -eq 0 ]; then
+    ok "All $_checks checks passed"
+else
+    ok "$_passed of $_checks checks passed"
+    for w in "${_warnings[@]}"; do warn "$w"; done
+fi
+
+# ── Gatekeeper bypass ────────────────────────────────
+
+if [ -d "/Applications/LyX.app" ] && xattr -l /Applications/LyX.app 2>/dev/null | grep -q com.apple.quarantine; then
+    xattr -d com.apple.quarantine /Applications/LyX.app 2>/dev/null \
+        && ok "Cleared Gatekeeper quarantine on LyX.app" \
+        || true  # not critical
+fi
+
+# ── Total elapsed time ───────────────────────────────
+
+_total_el=$(( SECONDS - INSTALL_START ))
+if [ "$_total_el" -ge 60 ]; then
+    _total_fmt=$(printf '%dm%02ds' $((_total_el / 60)) $((_total_el % 60)))
+else
+    _total_fmt=$(printf '%ds' "$_total_el")
+fi
+
+header "Setup Complete  ${DIM}(${_total_fmt})${NC}"
 echo ""
-echo "=============================================="
-echo "  Done!"
-echo "=============================================="
+echo -e "  ${BOLD}Next steps:${NC}"
 echo ""
-echo "  Next steps:"
-echo "  1. Open LyX (first time: right-click > Open to bypass Gatekeeper)"
-echo "  2. Run Tools > Reconfigure, then restart LyX"
-echo "  3. Cmd+N creates Hebrew RTL documents with David CLM"
-echo "  4. F12 toggles Hebrew/English (keep OS keyboard on English)"
-echo "     On laptops: you may need Fn+F12 if F12 is mapped to a media key"
-echo "  5. File paths must not contain Hebrew characters"
+if [ -d "/Applications/LyX.app" ]; then
+    echo -e "  ${CYAN}1${NC}  Open LyX and run ${BOLD}${YELLOW}Tools > Reconfigure${NC}, then restart LyX"
+    echo -e "     ${DIM}This is required for the new settings to take effect${NC}"
+else
+    echo -e "  ${CYAN}1${NC}  Install LyX, then run ${BOLD}${YELLOW}Tools > Reconfigure${NC}"
+fi
+echo -e "  ${CYAN}2${NC}  ${BOLD}Cmd+N${NC} creates Hebrew RTL documents with David CLM"
+echo -e "  ${CYAN}3${NC}  ${BOLD}F12${NC} toggles Hebrew/English ${DIM}(keep OS keyboard on English)${NC}"
+echo -e "     ${DIM}On laptops: you may need Fn+F12 if F12 is mapped to a media key${NC}"
+echo -e "  ${CYAN}4${NC}  File paths must not contain Hebrew characters"
+echo ""
+echo -e "  ${DIM}Log: $LOG_FILE${NC}"
 echo ""
