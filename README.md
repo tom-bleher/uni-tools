@@ -4,34 +4,42 @@ Single-script installer for [LyX](https://www.lyx.org/) with full **Hebrew RTL**
 Based on the [Madlyx guide](https://mkali56.wixsite.com/madlyx) by Michael Kali.
 
 <p align="center">
-  <img src="assets/banner.png" alt="lyx-he installer banner" width="640">
+  <img src="screenshots/banner.png" alt="lyx-he installer banner" width="640">
 </p>
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/tom-bleher/lyx-he.git
-cd lyx-he
-chmod +x install.sh
-./install.sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tom-bleher/lyx-he/main/install.sh)"
 ```
 
-The script is **idempotent** — run it again safely at any time. Already-installed components are skipped and existing config files are backed up.
+That's it — one command. The script is **idempotent** — run it again safely at any time. Already-installed components are skipped and existing config files are backed up.
 
 > **Prerequisite:** macOS (Apple Silicon or Intel). The installer sets up [Homebrew](https://brew.sh) automatically if needed.
 
-### Usage
+### Options
 
+```bash
+# Install all components without prompting
+curl -fsSL https://raw.githubusercontent.com/tom-bleher/lyx-he/main/install.sh | bash -s -- --force
+
+# Preview what would be installed
+curl -fsSL https://raw.githubusercontent.com/tom-bleher/lyx-he/main/install.sh | bash -s -- --dry-run
 ```
-./install.sh              # Interactive component picker (default)
-./install.sh --force      # Install all components without prompting
-./install.sh --dry-run    # Show what would be installed without doing anything
-./install.sh --uninstall  # Interactively select components to remove
-./install.sh --help       # Show usage
+
+<details>
+<summary><strong>Alternative: clone and run locally</strong></summary>
+
+```bash
+git clone https://github.com/tom-bleher/lyx-he.git
+cd lyx-he
+./install.sh              # or --force, --dry-run, --uninstall, --help
 ```
+
+</details>
 
 <p align="center">
-  <img src="assets/usage.png" alt="CLI usage" width="570">
+  <img src="screenshots/usage.png" alt="CLI usage" width="570">
 </p>
 
 ## What Gets Installed
@@ -54,20 +62,20 @@ The script is **idempotent** — run it again safely at any time. Already-instal
 - Automatic Latin/Hebrew font switching via ucharclasses
 - OpenType math via unicode-math (XITS Math)
 - Clickable cross-references and PDF bookmarks via hyperref
-- Hebrew + English article templates
+- Document templates (article, solutions, CV) in Hebrew and English
 
 ## How It Works
 
 An interactive picker lets you choose exactly which components to install:
 
 <p align="center">
-  <img src="assets/component-picker.png" alt="Interactive component picker" width="570">
+  <img src="screenshots/component-picker.png" alt="Interactive component picker" width="570">
 </p>
 
 The installer then runs through each step with progress tracking and automatic verification:
 
 <p align="center">
-  <img src="assets/install-steps.png" alt="Installation steps" width="570">
+  <img src="screenshots/install-steps.png" alt="Installation steps" width="570">
 </p>
 
 ## Keyboard Shortcuts
@@ -124,15 +132,18 @@ Press F12 to switch to Hebrew (David CLM); English text renders in Latin Modern 
 | Template | Description |
 |----------|-------------|
 | `defaults.lyx` | Blank Hebrew RTL document (used by Cmd+N) |
-| `Hebrew_Article.lyx` | Article with Title and Author fields |
-| `English_Article.lyx` | Standard Overleaf-style English article |
+| `Hebrew_Article.lyx` | Article with Title/Author/Abstract/TOC |
+| `English_Article.lyx` | Standard Overleaf-style English article with Title/Author/Abstract/TOC |
+| `Hebrew_Solutions.lyx` | Homework solutions with title box, clickable TOC, questions with sub-parts — based on templates from [Ivlyx](https://lyx.srayaa.com/) |
+| `English_Solutions.lyx` | English version of the homework solutions template |
+| `English_CV.lyx` | Academic CV/resume based on [Bruce Pourciau's CV template](https://wiki.lyx.org/Examples/CV) |
 
-Both Hebrew templates come pre-configured with XeLaTeX output, David CLM fonts, A4 paper, and 2cm margins.
+Hebrew templates come pre-configured with XeLaTeX output, David CLM fonts, A4 paper, and 2cm margins.
 
 ## Uninstall
 
 ```bash
-./install.sh --uninstall
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tom-bleher/lyx-he/main/install.sh)" -- --uninstall
 ```
 
 An interactive picker lets you select which components to remove. Config items are pre-selected; applications and fonts are not. Use **Space** to toggle, **Enter** to confirm.
@@ -181,6 +192,8 @@ LyX and TeX cannot handle Hebrew characters in file paths. Save your documents i
 ## Credits
 
 - [Madlyx guide](https://mkali56.wixsite.com/madlyx) by Michael Kali — the original Hebrew LyX setup instructions
+- [Ivlyx](https://lyx.srayaa.com/) — comprehensive Hebrew LyX resource site
+- [Bruce Pourciau](https://wiki.lyx.org/Examples/CV) — academic CV template
 - [Culmus Project](https://culmus.sourceforge.io/) — Hebrew fonts
 - [LyX](https://www.lyx.org/) — the document processor
 
