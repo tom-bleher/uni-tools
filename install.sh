@@ -7,8 +7,12 @@
 # Configures: Hebrew RTL, David CLM fonts, F12 language toggle, XeTeX output
 #
 # Prerequisites: macOS (Homebrew auto-installed if needed)
-# Usage: ./install.sh [--help | --uninstall | --force | --dry-run]
+# Usage: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tom-bleher/lyx-he/main/install.sh)"
 #
+
+# Wrapping braces ensure the entire script is downloaded before execution,
+# protecting against partial downloads when piped via curl.
+{
 
 set -euo pipefail
 
@@ -240,10 +244,12 @@ tui_checkbox() {
 
 # ── Usage ────────────────────────────────────────────
 usage() {
+    local url="https://raw.githubusercontent.com/tom-bleher/lyx-he/main/install.sh"
     echo ""
     echo -e "  ${BOLD}lyx-he${NC} — Hebrew LyX installer for macOS"
     echo ""
-    echo -e "  ${BOLD}Usage:${NC}  ./install.sh [OPTIONS]"
+    echo -e "  ${BOLD}Install:${NC}"
+    echo -e "    /bin/bash -c \"\$(curl -fsSL ${url})\""
     echo ""
     echo -e "  ${BOLD}Options:${NC}"
     echo -e "    ${CYAN}(none)${NC}           Interactive component picker ${DIM}(default)${NC}"
@@ -251,6 +257,10 @@ usage() {
     echo -e "    ${CYAN}--dry-run${NC}        Show what would be installed without doing anything"
     echo -e "    ${CYAN}--uninstall${NC}      Interactively select components to remove"
     echo -e "    ${CYAN}--help, -h${NC}       Show this help message"
+    echo ""
+    echo -e "  ${BOLD}Examples:${NC}"
+    echo -e "    curl -fsSL ${url} | bash -s -- --force"
+    echo -e "    /bin/bash -c \"\$(curl -fsSL ${url})\" -- --uninstall"
     echo ""
     echo -e "  ${DIM}The script is idempotent — already-installed components are skipped.${NC}"
     echo ""
@@ -288,6 +298,13 @@ fi
 
 INSTALL_START=$SECONDS
 
+TEMPLATE_FILES=(
+    templates/defaults.lyx
+    templates/Hebrew_Article.lyx   templates/English_Article.lyx
+    templates/Hebrew_Solutions.lyx  templates/English_Solutions.lyx
+    templates/English_CV.lyx
+)
+
 # ── Uninstall flow ───────────────────────────────────
 if $UNINSTALL; then
     detect_lyx_dir
@@ -310,11 +327,11 @@ if $UNINSTALL; then
 
     # Templates
     _has_templates=false
-    for f in templates/defaults.lyx templates/Hebrew_Article.lyx templates/English_Article.lyx; do
+    for f in "${TEMPLATE_FILES[@]}"; do
         [ -f "$LYX_DIR/$f" ] && _has_templates=true
     done
     if $_has_templates; then
-        TUI_ITEMS+=("LyX templates (defaults, Hebrew, English)")
+        TUI_ITEMS+=("LyX templates (articles, CV, letter, homework)")
         TUI_CHECKED+=(1)
         UNINSTALL_ACTIONS+=("templates")
     fi
@@ -412,7 +429,7 @@ if $UNINSTALL; then
                 done
                 ;;
             templates)
-                for f in templates/defaults.lyx templates/Hebrew_Article.lyx templates/English_Article.lyx; do
+                for f in "${TEMPLATE_FILES[@]}"; do
                     [ -f "$LYX_DIR/$f" ] && rm "$LYX_DIR/$f" && ok "Removed $f"
                 done
                 ;;
@@ -990,7 +1007,8 @@ EOF
     write_lyx_template() {
         local file="$1"
         local body="$2"
-        cat > "$file" << 'HEADER'
+        local extra_preamble="${3:-}"
+        cat > "$file" << 'PREAMBLE'
 #LyX 2.4 created this file. For more info see https://www.lyx.org/
 \lyxformat 620
 \begin_document
@@ -1009,16 +1027,17 @@ EOF
 
 % OpenType math font for proper math typography with XeTeX
 \usepackage{unicode-math}
-\setmathfont{XITS Math}
+\setmathfont{STIX Two Math}
 
 % Hyperref — clickable cross-refs & PDF bookmarks for Hebrew
-% unicode=false is required for correct Hebrew PDF bookmarks
-\usepackage[unicode=false,bookmarks=true,colorlinks=true,
-  linkcolor=blue,citecolor=green,urlcolor=magenta]{hyperref}
+\usepackage[unicode=false,bookmarks=true]{hyperref}
 
 % Auto font-switch for characters outside Hebrew Unicode block
 \usepackage{ucharclasses}
 \setTransitionsForLatin{\begingroup\rmfamily}{\endgroup}
+PREAMBLE
+        [ -n "$extra_preamble" ] && printf '\n%s\n' "$extra_preamble" >> "$file"
+        cat >> "$file" << 'HEADER'
 \end_preamble
 \use_default_options true
 \begin_modules
@@ -1130,15 +1149,55 @@ HEADER
 
     ok "defaults.lyx created (Cmd+N defaults to Hebrew RTL)"
 
-    # Hebrew_Article.lyx — template with Title/Author
+    # Hebrew_Article.lyx — template with Title/Author/Date/Abstract/TOC/Section
     write_lyx_template "$LYX_DIR/templates/Hebrew_Article.lyx" '\begin_body
 
 \begin_layout Title
-
+כותרת
 \end_layout
 
 \begin_layout Author
+שם המחבר
+\end_layout
 
+\begin_layout Date
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+
+\backslash
+today
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Abstract
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset CommandInset toc
+LatexCommand tableofcontents
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Newpage newpage
+\end_inset
+
+
+\end_layout
+
+\begin_layout Section
+מבוא
 \end_layout
 
 \begin_layout Standard
@@ -1189,6 +1248,10 @@ HEADER
 \paperfontsize 12
 \spacing single
 \use_hyperref true
+\pdf_title "English Article"
+\pdf_author ""
+\pdf_subject ""
+\pdf_keywords ""
 \papersize a4paper
 \use_geometry true
 \topmargin 2cm
@@ -1247,11 +1310,11 @@ HEADER
 \begin_body
 
 \begin_layout Title
-
+Title
 \end_layout
 
 \begin_layout Author
-
+Author Name
 \end_layout
 
 \begin_layout Date
@@ -1270,6 +1333,30 @@ today
 
 \end_layout
 
+\begin_layout Abstract
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset CommandInset toc
+LatexCommand tableofcontents
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Newpage newpage
+\end_inset
+
+
+\end_layout
+
+\begin_layout Section
+Introduction
+\end_layout
+
 \begin_layout Standard
 
 \end_layout
@@ -1279,6 +1366,1477 @@ today
 ENDLYX
 
     ok "English_Article.lyx template created (Overleaf-style)"
+
+    # Hebrew_Solutions.lyx — homework solutions with title box, TOC, questions
+    cat > "$LYX_DIR/templates/Hebrew_Solutions.lyx" << 'ENDLYX'
+#LyX 2.4 created this file. For more info see https://www.lyx.org/
+\lyxformat 620
+\begin_document
+\begin_header
+\save_transient_properties true
+\origin unavailable
+\textclass article
+\begin_preamble
+% Hebrew fonts — David CLM with explicit italic/bold mapping
+\newfontfamily\hebrewfont[Script=Hebrew,Ligatures=TeX,
+  ItalicFont={David CLM Medium Italic},
+  BoldFont={David CLM Bold},
+  BoldItalicFont={David CLM Bold Italic}]{David CLM}
+\newfontfamily\hebrewfonttt[Script=Hebrew]{Miriam Mono CLM}
+\newfontfamily\hebrewfontsf[Script=Hebrew]{Simple CLM}
+
+% OpenType math font for proper math typography with XeTeX
+\usepackage{unicode-math}
+\setmathfont{STIX Two Math}
+
+% Hyperref — clickable cross-refs & PDF bookmarks for Hebrew
+\usepackage[unicode=false,bookmarks=true]{hyperref}
+
+% Auto font-switch for characters outside Hebrew Unicode block
+\usepackage{ucharclasses}
+\setTransitionsForLatin{\begingroup\rmfamily}{\endgroup}
+
+% Display equation spacing
+\AtBeginDocument{\setlength\abovedisplayskip{6pt}}
+\AtBeginDocument{\setlength\belowdisplayskip{6pt}}
+\AtBeginDocument{\setlength\belowdisplayshortskip{6pt}}
+\AtBeginDocument{\setlength\belowdisplayshortskip{6pt}}
+
+% Footnoterule on the right side
+\AtBeginDocument{
+\renewcommand\footnoterule{%
+  \kern 3pt
+  \hbox to \textwidth{\hfill\vrule height 0.5pt width 0.4\textwidth}
+  \kern 4pt
+}}
+
+% Wider word spacing
+\spaceskip=1.3\fontdimen2\font plus 1\fontdimen3\font minus 1.5\fontdimen4\font
+
+% Pleasant LyX colors
+\usepackage{xcolor}
+\definecolor{blue}{RGB}{12,97,197}
+\definecolor{brown}{RGB}{154,58,0}
+\definecolor{green}{RGB}{0,128,40}
+\definecolor{orange}{RGB}{255,114,38}
+\definecolor{purple}{RGB}{94,53,177}
+\definecolor{red}{RGB}{235,16,16}
+
+% Solid black QED square (unicode-math provides \blacksquare)
+\renewcommand{\qedsymbol}{$\blacksquare$}
+
+% Section formatting
+\renewcommand*{\@seccntformat}[1]{\hspace{0.5cm}\csname the#1\endcsname\hspace{0.5cm}}
+\usepackage{titlesec}
+\titleformat{\section}{\fontsize{20}{20}\bfseries}{\thesection}{10pt}{}
+\titleformat{\subsection}{\fontsize{15}{15}\bfseries}{\thesubsection}{10pt}{}
+\titleformat{\subsubsection}{\bfseries}{\thesubsubsection}{10pt}{}
+
+% Disjoint union symbols
+\makeatletter
+\def\moverlay{\mathpalette\mov@rlay}
+\def\mov@rlay#1#2{\leavevmode\vtop{%
+   \baselineskip\z@skip \lineskiplimit-\maxdimen
+   \ialign{\hfil$\m@th#1##$\hfil\cr#2\crcr}}}
+\newcommand{\charfusion}[3][\mathord]{
+    #1{\ifx#1\mathop\vphantom{#2}\fi
+        \mathpalette\mov@rlay{#2\cr#3}
+      }
+    \ifx#1\mathop\expandafter\displaylimits\fi}
+\makeatother
+\newcommand{\cupdot}{\charfusion[\mathbin]{\cup}{\cdot}}
+\newcommand{\bigcupdot}{\charfusion[\mathop]{\bigcup}{\cdot}}
+\end_preamble
+\use_default_options true
+\begin_modules
+theorems-ams
+\end_modules
+\maintain_unincluded_children no
+\begin_local_layout
+Style Section
+	Font
+	  Series     Medium
+	  Shape      Smallcaps
+	  Size       Larger
+	  Series     Bold
+	EndFont
+	TocLevel 1
+End
+Style Section*
+	Font
+	  Series     Medium
+	  Shape      Smallcaps
+	  Size       Larger
+	  Series     Bold
+	EndFont
+End
+\end_local_layout
+\language hebrew
+\language_package default
+\inputencoding auto-legacy
+\fontencoding auto
+\font_roman "default" "default"
+\font_sans "default" "default"
+\font_typewriter "default" "default"
+\font_math "auto" "auto"
+\font_default_family default
+\use_non_tex_fonts true
+\font_sc false
+\font_roman_osf false
+\font_sans_osf false
+\font_typewriter_osf false
+\font_sf_scale 100 100
+\font_tt_scale 100 100
+\use_microtype true
+\use_dash_ligatures true
+\graphics xetex
+\default_output_format pdf4
+\output_sync 0
+\bibtex_command default
+\index_command default
+\float_placement class
+\float_alignment class
+\paperfontsize 12
+\spacing onehalf
+\use_hyperref false
+\papersize a4paper
+\use_geometry true
+\use_package amsmath 1
+\use_package amssymb 1
+\use_package cancel 1
+\use_package esint 1
+\use_package mathdots 1
+\use_package mathtools 1
+\use_package mhchem 1
+\use_package stackrel 1
+\use_package stmaryrd 1
+\use_package undertilde 1
+\cite_engine basic
+\cite_engine_type default
+\biblio_style plain
+\use_bibtopic false
+\use_indices false
+\paperorientation portrait
+\suppress_date false
+\justification true
+\use_refstyle 1
+\use_formatted_ref 1
+\use_minted 0
+\use_lineno 0
+\index Index
+\shortcut idx
+\color #008000
+\end_index
+\leftmargin 2cm
+\topmargin 2cm
+\rightmargin 2cm
+\bottommargin 3cm
+\headheight 0cm
+\headsep 0cm
+\footskip 2cm
+\secnumdepth -2
+\tocdepth 2
+\paragraph_separation indent
+\paragraph_indentation 0bp
+\is_math_indent 0
+\math_numbering_side default
+\quotes_style english
+\dynamic_quotes 0
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+\tablestyle default
+\tracking_changes false
+\output_changes false
+\change_bars false
+\postpone_fragile_content true
+\html_math_output 0
+\html_css_as_file 0
+\html_be_strict false
+\docbook_table_output 0
+\docbook_mathml_prefix 1
+\end_header
+
+\begin_body
+
+\begin_layout Standard
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Box Doublebox
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "c"
+use_parbox 0
+use_makebox 0
+width "100col%"
+special "none"
+height "1in"
+height_special "totalheight"
+thickness "0.4pt"
+separation "20pt"
+shadowsize "4pt"
+framecolor "black"
+backgroundcolor "none"
+status open
+
+\begin_layout Plain Layout
+\begin_inset space \space{}
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\paragraph_spacing double
+\align center
+
+\series bold
+\size huge
+שם הקורס
+\end_layout
+
+\begin_layout Plain Layout
+\paragraph_spacing double
+\align center
+
+\series bold
+\size huge
+פתרון לתרגיל
+\end_layout
+
+\begin_layout Plain Layout
+\align center
+שם: | ת"ז:
+\end_layout
+
+\begin_layout Plain Layout
+\align center
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+\backslash
+today
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset space \space{}
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset CommandInset toc
+LatexCommand tableofcontents
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Newpage newpage
+\end_inset
+
+
+\end_layout
+
+\begin_layout Section
+שאלה 1
+\end_layout
+
+\begin_layout Subsection
+(א)
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+\size large
+צ״ל:
+\end_layout
+
+\begin_layout Subsection
+(ב)
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+\size large
+צ״ל:
+\end_layout
+
+\begin_layout Subsection
+(ג)
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+\size large
+צ״ל:
+\end_layout
+
+\begin_layout Standard
+\begin_inset Newpage newpage
+\end_inset
+
+
+\end_layout
+
+\begin_layout Section
+שאלה 2
+\end_layout
+
+\begin_layout Subsection
+(א)
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+\size large
+צ״ל:
+\end_layout
+
+\begin_layout Subsection
+(ב)
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+\size large
+צ״ל:
+\end_layout
+
+\begin_layout Subsection
+(ג)
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+\size large
+צ״ל:
+\end_layout
+
+\end_body
+\end_document
+ENDLYX
+
+    ok "Hebrew_Solutions.lyx template created"
+
+    # English_Solutions.lyx — English version of homework solutions template
+    cat > "$LYX_DIR/templates/English_Solutions.lyx" << 'ENDLYX'
+#LyX 2.4 created this file. For more info see https://www.lyx.org/
+\lyxformat 620
+\begin_document
+\begin_header
+\save_transient_properties true
+\origin unavailable
+\textclass article
+\begin_preamble
+% Display equation spacing
+\AtBeginDocument{\setlength\abovedisplayskip{6pt}}
+\AtBeginDocument{\setlength\belowdisplayskip{6pt}}
+\AtBeginDocument{\setlength\belowdisplayshortskip{6pt}}
+\AtBeginDocument{\setlength\belowdisplayshortskip{6pt}}
+
+% Custom colors
+\usepackage{xcolor}
+\definecolor{blue}{RGB}{12,97,197}
+\definecolor{brown}{RGB}{154,58,0}
+\definecolor{green}{RGB}{0,128,40}
+\definecolor{orange}{RGB}{255,114,38}
+\definecolor{purple}{RGB}{94,53,177}
+\definecolor{red}{RGB}{235,16,16}
+
+% Solid black QED square
+\usepackage{amssymb}
+\renewcommand{\qedsymbol}{$\blacksquare$}
+
+% Section formatting
+\usepackage{titlesec}
+\titleformat{\section}{\fontsize{20}{20}\bfseries}{\thesection}{10pt}{}
+\titleformat{\subsection}{\fontsize{15}{15}\bfseries}{\thesubsection}{10pt}{}
+\titleformat{\subsubsection}{\bfseries}{\thesubsubsection}{10pt}{}
+
+% Disjoint union symbols
+\makeatletter
+\def\moverlay{\mathpalette\mov@rlay}
+\def\mov@rlay#1#2{\leavevmode\vtop{%
+   \baselineskip\z@skip \lineskiplimit-\maxdimen
+   \ialign{\hfil$\m@th#1##$\hfil\cr#2\crcr}}}
+\newcommand{\charfusion}[3][\mathord]{
+    #1{\ifx#1\mathop\vphantom{#2}\fi
+        \mathpalette\mov@rlay{#2\cr#3}
+      }
+    \ifx#1\mathop\expandafter\displaylimits\fi}
+\makeatother
+\newcommand{\cupdot}{\charfusion[\mathbin]{\cup}{\cdot}}
+\newcommand{\bigcupdot}{\charfusion[\mathop]{\bigcup}{\cdot}}
+\end_preamble
+\use_default_options true
+\begin_modules
+theorems-ams
+\end_modules
+\maintain_unincluded_children no
+\language english
+\language_package default
+\inputencoding auto-legacy
+\fontencoding auto
+\font_roman "default" "default"
+\font_sans "default" "default"
+\font_typewriter "default" "default"
+\font_math "auto" "auto"
+\font_default_family default
+\use_non_tex_fonts false
+\font_sc false
+\font_roman_osf false
+\font_sans_osf false
+\font_typewriter_osf false
+\font_sf_scale 100 100
+\font_tt_scale 100 100
+\use_microtype true
+\use_dash_ligatures true
+\graphics default
+\default_output_format pdf2
+\output_sync 0
+\bibtex_command default
+\index_command default
+\float_placement class
+\float_alignment class
+\paperfontsize 12
+\spacing onehalf
+\use_hyperref true
+\papersize a4paper
+\use_geometry true
+\use_package amsmath 1
+\use_package amssymb 1
+\use_package cancel 1
+\use_package esint 1
+\use_package mathdots 1
+\use_package mathtools 1
+\use_package mhchem 1
+\use_package stackrel 1
+\use_package stmaryrd 1
+\use_package undertilde 1
+\cite_engine basic
+\cite_engine_type default
+\biblio_style plain
+\use_bibtopic false
+\use_indices false
+\paperorientation portrait
+\suppress_date false
+\justification true
+\use_refstyle 1
+\use_formatted_ref 1
+\use_minted 0
+\use_lineno 0
+\index Index
+\shortcut idx
+\color #008000
+\end_index
+\leftmargin 2cm
+\topmargin 2cm
+\rightmargin 2cm
+\bottommargin 3cm
+\headheight 0cm
+\headsep 0cm
+\footskip 2cm
+\secnumdepth -2
+\tocdepth 2
+\paragraph_separation indent
+\paragraph_indentation 0bp
+\is_math_indent 0
+\math_numbering_side default
+\quotes_style english
+\dynamic_quotes 0
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+\tablestyle default
+\tracking_changes false
+\output_changes false
+\change_bars false
+\postpone_fragile_content true
+\html_math_output 0
+\html_css_as_file 0
+\html_be_strict false
+\docbook_table_output 0
+\docbook_mathml_prefix 1
+\end_header
+
+\begin_body
+
+\begin_layout Standard
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Box Doublebox
+position "t"
+hor_pos "c"
+has_inner_box 1
+inner_pos "c"
+use_parbox 0
+use_makebox 0
+width "100col%"
+special "none"
+height "1in"
+height_special "totalheight"
+thickness "0.4pt"
+separation "20pt"
+shadowsize "4pt"
+framecolor "black"
+backgroundcolor "none"
+status open
+
+\begin_layout Plain Layout
+\begin_inset space \space{}
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\paragraph_spacing double
+\align center
+
+\series bold
+\size huge
+Course Name
+\end_layout
+
+\begin_layout Plain Layout
+\paragraph_spacing double
+\align center
+
+\series bold
+\size huge
+Solution to Exercise
+\end_layout
+
+\begin_layout Plain Layout
+\align center
+Name: | ID:
+\end_layout
+
+\begin_layout Plain Layout
+\align center
+\begin_inset ERT
+status open
+
+\begin_layout Plain Layout
+
+\backslash
+today
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Plain Layout
+\begin_inset space \space{}
+\end_inset
+
+
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset CommandInset toc
+LatexCommand tableofcontents
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Newpage newpage
+\end_inset
+
+
+\end_layout
+
+\begin_layout Section
+Question 1
+\end_layout
+
+\begin_layout Subsection
+(a)
+\end_layout
+
+\begin_layout Standard
+
+\end_layout
+
+\begin_layout Subsection
+(b)
+\end_layout
+
+\begin_layout Standard
+
+\end_layout
+
+\begin_layout Subsection
+(c)
+\end_layout
+
+\begin_layout Standard
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Newpage newpage
+\end_inset
+
+
+\end_layout
+
+\begin_layout Section
+Question 2
+\end_layout
+
+\begin_layout Subsection
+(a)
+\end_layout
+
+\begin_layout Standard
+
+\end_layout
+
+\begin_layout Subsection
+(b)
+\end_layout
+
+\begin_layout Standard
+
+\end_layout
+
+\begin_layout Subsection
+(c)
+\end_layout
+
+\begin_layout Standard
+
+\end_layout
+
+\end_body
+\end_document
+ENDLYX
+
+    ok "English_Solutions.lyx template created"
+
+    # English_CV.lyx — academic CV based on Bruce Pourciau's template
+    cat > "$LYX_DIR/templates/English_CV.lyx" << 'ENDOFCV'
+#LyX 2.5 created this file. For more info see https://www.lyx.org/
+\lyxformat 643
+\begin_document
+\begin_header
+\save_transient_properties true
+\origin unavailable
+\textclass article
+\begin_preamble
+\frenchspacing
+\usepackage{amsmath}
+\newcommand{\ø}{\raisebox{.3ex}{\tiny$\; \bullet \;$}}
+\renewcommand{\arraystretch}{1.25}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\chead{\textit{Your Name \(\cdot\) Curriculum Vitae}}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\usepackage{mathpazo}
+% Added by lyx2lyx
+\setlength{\parskip}{\medskipamount}
+\setlength{\parindent}{0pt}
+\end_preamble
+\use_default_options false
+\maintain_unincluded_children no
+\language american
+\language_package default
+\inputencoding auto-legacy
+\fontencoding auto
+\font_roman "default" "default"
+\font_sans "default" "default"
+\font_typewriter "default" "default"
+\font_math "auto" "auto"
+\font_default_family default
+\use_non_tex_fonts false
+\font_sc false
+\font_roman_osf false
+\font_sans_osf false
+\font_typewriter_osf false
+\font_sf_scale 100 100
+\font_tt_scale 100 100
+\use_microtype false
+\use_dash_ligatures true
+\graphics default
+\default_output_format default
+\output_sync 0
+\bibtex_command default
+\index_command default
+\paperfontsize 11
+\spacing single
+\use_hyperref true
+\pdf_title "English CV"
+\pdf_author ""
+\pdf_subject ""
+\pdf_keywords ""
+\papersize letter
+\use_geometry true
+\use_package amsmath 1
+\use_package amssymb 2
+\use_package cancel 1
+\use_package esint 0
+\use_package mathdots 0
+\use_package mathtools 1
+\use_package mhchem 0
+\use_package stackrel 1
+\use_package stmaryrd 1
+\use_package undertilde 1
+\cite_engine basic
+\cite_engine_type default
+\biblio_style plain
+\use_bibtopic false
+\use_indices false
+\paperorientation portrait
+\suppress_date false
+\justification default
+\crossref_package prettyref
+\use_formatted_ref 0
+\use_minted 0
+\use_lineno 0
+\backgroundcolor none
+\fontcolor none
+\notefontcolor lightgray
+\boxbgcolor red
+\table_border_color default
+\table_odd_row_color default
+\table_even_row_color default
+\table_alt_row_colors_start 1
+\index Index
+\shortcut idx
+\color #008000
+\end_index
+\leftmargin 0.75in
+\topmargin 0.6in
+\rightmargin 0.75in
+\bottommargin 0.6in
+\secnumdepth 3
+\tocdepth 3
+\paragraph_separation indent
+\paragraph_indentation default
+\is_math_indent 0
+\math_numbering_side default
+\quotes_style english
+\dynamic_quotes 0
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+\tablestyle default
+\tracking_changes false
+\output_changes false
+\change_bars false
+\postpone_fragile_content false
+\html_math_output 0
+\html_css_as_file 0
+\html_be_strict false
+\docbook_table_output 0
+\docbook_mathml_prefix 1
+\docbook_mathml_version 0
+\end_header
+
+\begin_body
+
+\begin_layout Standard
+\align center
+
+\size large
+\noun on
+your name
+\noun default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\emph on
+Department of Mathematics
+\begin_inset Newline newline
+\end_inset
+
+Nowhere University 
+\begin_inset Newline newline
+\end_inset
+
+City,
+ State 00000-1111 USA
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace 13pt
+\end_inset
+
+
+\series bold
+Education
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+
+\noun on
+1976 university of
+\noun default
+ 
+\noun on
+someplace
+\noun default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\emph on
+Doctor of Philosophy in Mathematics,
+ April 1976
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+
+\noun on
+1971 someplace else university
+\noun default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\emph on
+Bachelor of Arts in Mathematics,
+ June 1971
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Academic Positions
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1997–98 Resident Fellow,
+ An Institute
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1993– Professor of Mathematics,
+ Nowhere University
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1991–92 Visiting Fellow,
+ University of Someplace
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1984–85 Visiting Fellow,
+ University of Someplace
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1983–92 Associate Professor of Mathematics,
+ Nowhere University
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1976–82 Assistant Professor of Mathematics,
+ Nowhere University
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1971–75 Teaching Assistant,
+ University of Someplace
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1970 Teaching Assistant,
+ National Science Foundation Mathematics Program,
+ University of Couldbeanywhere
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Research Interests
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+\begin_inset space ~
+\end_inset
+
+ Math stuff generally.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+\begin_inset space ~
+\end_inset
+
+ Numbers and all that.
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Research Projects:
+ Current and Planned
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+\begin_inset space ~
+\end_inset
+
+ Prime numbers
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+\begin_inset space ~
+\end_inset
+
+ Not so prime numbers
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Research Submissions
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2006 
+\begin_inset Quotes eld
+\end_inset
+
+Why I Love Primes,
+\begin_inset Quotes erd
+\end_inset
+
+ 
+\emph on
+Archive for History of Prime Numbers,
+
+\emph default
+ under review.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2006 
+\begin_inset Quotes eld
+\end_inset
+
+It's Been a Prime Life:
+ My Story,
+\begin_inset Quotes erd
+\end_inset
+
+ 
+\emph on
+Studies in History and Philosophy of Primes,
+
+\emph default
+ under review.
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Research Publications
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2006 
+\begin_inset Quotes eld
+\end_inset
+
+Higher Primes,
+ Like 7,
+\begin_inset Quotes erd
+\end_inset
+
+ 
+\emph on
+Unbelievable Mathematica,
+
+\emph default
+ to appear.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2006 
+\begin_inset Quotes eld
+\end_inset
+
+The Prime Number 5,
+\begin_inset Quotes erd
+\end_inset
+
+ 
+\emph on
+Could Not be Worse
+\emph default
+ 
+\emph on
+Mathematics,
+
+\emph default
+ to appear.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2006 
+\begin_inset Quotes eld
+\end_inset
+
+The Prime Number 3,
+\begin_inset Quotes erd
+\end_inset
+
+ 
+\emph on
+Archive of Even Worse Mathematics
+\emph default
+ 60 (2006),
+ 157–207.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2004 
+\begin_inset Quotes eld
+\end_inset
+
+The Prime Number 2,
+\begin_inset Quotes erd
+\end_inset
+
+ 
+\emph on
+Journal of Not So Good Mathematics
+\emph default
+ 58 (2004),
+ 283–321.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+1976 
+\begin_inset Quotes eld
+\end_inset
+
+The First Prime Numbers,
+\begin_inset Quotes erd
+\end_inset
+
+ Doctoral Dissertation,
+ University of Someplace,
+ April,
+ 1976.
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Book Reviews
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2001 Here's a book review.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2000 And another one.
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Major Invited Talks
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+1997 Talk Number 4.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+1993 Talk Number 3.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+1992 Talk Number 2.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+1991 Talk Number 1.
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Honors and Awards
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2000 Invited to be the 2001–2002 Daft Lecturer at the University of Overthere
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+2000 Nowhere University Excellence in Teaching Award,
+ June 2000.
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Service
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+\begin_inset space ~
+\end_inset
+
+ Reviewer for 
+\emph on
+Journal of Abstruse Generalizations,
+
+\emph default
+ 
+\emph on
+Archive for the True but Trivial.
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Affiliations
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+\begin_inset space ~
+\end_inset
+
+ Mathematical Association of America
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+\begin_inset space ~
+\end_inset
+
+ American Mathematical Society
+\end_layout
+
+\end_body
+\end_document
+ENDOFCV
+
+
+    ok "English_CV.lyx template created"
 
     # ── Run LyX Reconfigure ──────────────────────────
 
@@ -1334,7 +2892,7 @@ fi
 
 if is_selected "config"; then
     detect_lyx_dir
-    for f in preferences bind/user.bind templates/defaults.lyx templates/Hebrew_Article.lyx templates/English_Article.lyx; do
+    for f in preferences bind/user.bind "${TEMPLATE_FILES[@]}"; do
         _check "Missing config: $f" test -f "$LYX_DIR/$f"
     done
 fi
@@ -1407,7 +2965,10 @@ fi
 echo -e "  ${CYAN}2${NC}  ${BOLD}Cmd+N${NC} creates Hebrew RTL documents with David CLM"
 echo -e "  ${CYAN}3${NC}  ${BOLD}F12${NC} toggles Hebrew/English ${DIM}(keep OS keyboard on English)${NC}"
 echo -e "     ${DIM}On laptops: you may need Fn+F12 if F12 is mapped to a media key${NC}"
-echo -e "  ${CYAN}4${NC}  File paths must not contain Hebrew characters"
+echo -e "  ${CYAN}4${NC}  Use ${BOLD}File > New from Template${NC} for CV, letter, and homework templates"
+echo -e "  ${CYAN}5${NC}  File paths must not contain Hebrew characters"
 echo ""
 echo -e "  ${DIM}Log: $LOG_FILE${NC}"
 echo ""
+
+}
