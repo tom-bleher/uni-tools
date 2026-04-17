@@ -983,8 +983,8 @@ eqs-within-sections
 \output_sync 0
 \bibtex_command default
 \index_command default
-\float_placement class
-\float_alignment class
+\float_placement H
+\float_alignment center
 \paperfontsize 12
 \spacing single
 \use_hyperref false
@@ -1260,8 +1260,8 @@ LatexCommand tableofcontents
 \output_sync 0
 \bibtex_command default
 \index_command default
-\float_placement class
-\float_alignment class
+\float_placement H
+\float_alignment center
 \paperfontsize 12
 \spacing single
 \use_hyperref true
@@ -1512,8 +1512,8 @@ End
 \output_sync 0
 \bibtex_command default
 \index_command default
-\float_placement class
-\float_alignment class
+\float_placement H
+\float_alignment center
 \paperfontsize 12
 \spacing onehalf
 \use_hyperref false
@@ -1840,8 +1840,8 @@ theorems-ams
 \output_sync 0
 \bibtex_command default
 \index_command default
-\float_placement class
-\float_alignment class
+\float_placement H
+\float_alignment center
 \paperfontsize 12
 \spacing onehalf
 \use_hyperref true
