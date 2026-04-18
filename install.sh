@@ -941,14 +941,6 @@ write_lyx_template() {
 
 % OpenType math font for proper math typography with XeTeX
 \usepackage{unicode-math}
-\setmathfont{STIX Two Math}
-
-% Hyperref — clickable cross-refs & PDF bookmarks for Hebrew
-\usepackage[unicode=false,bookmarks=true]{hyperref}
-
-% Auto font-switch for characters outside Hebrew Unicode block
-\usepackage{ucharclasses}
-\setTransitionsForLatin{\begingroup\rmfamily}{\endgroup}
 PREAMBLE
     [ -n "$extra_preamble" ] && printf '\n%s\n' "$extra_preamble" >> "$file"
     cat >> "$file" << 'HEADER'
@@ -987,7 +979,7 @@ eqs-within-sections
 \float_alignment center
 \paperfontsize 12
 \spacing single
-\use_hyperref false
+\use_hyperref true
 \papersize a4paper
 \use_geometry true
 \topmargin 2cm
@@ -1044,8 +1036,8 @@ eqs-within-sections
 \docbook_mathml_version 0
 \end_header
 HEADER
-    # NOTE: \use_hyperref is false because hyperref is loaded manually in the
-    # preamble with unicode=false (required for correct Hebrew PDF bookmarks).
+    # NOTE: \use_hyperref is true so LyX's native hyperref handles clickable
+    # cross-refs — XeTeX supports Unicode bookmarks natively, no manual load.
     # The theorems-ams modules are known to have potential RTL issues with
     # amsthm — if theorem numbering appears reversed, wrap with \L{}.
     echo "" >> "$file"
@@ -1405,14 +1397,6 @@ ENDLYX
 
 % OpenType math font for proper math typography with XeTeX
 \usepackage{unicode-math}
-\setmathfont{STIX Two Math}
-
-% Hyperref — clickable cross-refs & PDF bookmarks for Hebrew
-\usepackage[unicode=false,bookmarks=true]{hyperref}
-
-% Auto font-switch for characters outside Hebrew Unicode block
-\usepackage{ucharclasses}
-\setTransitionsForLatin{\begingroup\rmfamily}{\endgroup}
 
 % Display equation spacing
 \AtBeginDocument{\setlength\abovedisplayskip{6pt}}
@@ -1444,7 +1428,9 @@ ENDLYX
 \renewcommand{\qedsymbol}{$\blacksquare$}
 
 % Section formatting
+\makeatletter
 \renewcommand*{\@seccntformat}[1]{\hspace{0.5cm}\csname the#1\endcsname\hspace{0.5cm}}
+\makeatother
 \usepackage{titlesec}
 \titleformat{\section}{\fontsize{20}{20}\bfseries}{\thesection}{10pt}{}
 \titleformat{\subsection}{\fontsize{15}{15}\bfseries}{\thesubsection}{10pt}{}
@@ -1516,7 +1502,7 @@ End
 \float_alignment center
 \paperfontsize 12
 \spacing onehalf
-\use_hyperref false
+\use_hyperref true
 \papersize a4paper
 \use_geometry true
 \use_package amsmath 1
@@ -1545,13 +1531,13 @@ End
 \shortcut idx
 \color #008000
 \end_index
-\leftmargin 2cm
-\topmargin 2cm
-\rightmargin 2cm
-\bottommargin 3cm
+\leftmargin 1.5cm
+\topmargin 1.5cm
+\rightmargin 1.5cm
+\bottommargin 2cm
 \headheight 0cm
 \headsep 0cm
-\footskip 2cm
+\footskip 1.5cm
 \secnumdepth -2
 \tocdepth 2
 \paragraph_separation indent
@@ -1873,13 +1859,13 @@ theorems-ams
 \shortcut idx
 \color #008000
 \end_index
-\leftmargin 2cm
-\topmargin 2cm
-\rightmargin 2cm
-\bottommargin 3cm
+\leftmargin 1.5cm
+\topmargin 1.5cm
+\rightmargin 1.5cm
+\bottommargin 2cm
 \headheight 0cm
 \headsep 0cm
-\footskip 2cm
+\footskip 1.5cm
 \secnumdepth -2
 \tocdepth 2
 \paragraph_separation indent
