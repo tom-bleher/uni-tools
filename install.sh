@@ -1398,6 +1398,9 @@ ENDLYX
 % OpenType math font for proper math typography with XeTeX
 \usepackage{unicode-math}
 
+% Safety: define \texorpdfstring if hyperref isn't loaded (harmless otherwise)
+\providecommand{\texorpdfstring}[2]{#1}
+
 % Display equation spacing
 \AtBeginDocument{\setlength\abovedisplayskip{6pt}}
 \AtBeginDocument{\setlength\belowdisplayskip{6pt}}
@@ -1432,9 +1435,22 @@ ENDLYX
 \renewcommand*{\@seccntformat}[1]{\hspace{0.5cm}\csname the#1\endcsname\hspace{0.5cm}}
 \makeatother
 \usepackage{titlesec}
-\titleformat{\section}{\fontsize{20}{20}\bfseries}{\thesection}{10pt}{}
-\titleformat{\subsection}{\fontsize{15}{15}\bfseries}{\thesubsection}{10pt}{}
+\titleformat{\section}{\fontsize{17}{20}\bfseries}{\thesection}{10pt}{}
+\titleformat{\subsection}{\fontsize{13}{16}\bfseries}{\thesubsection}{10pt}{}
 \titleformat{\subsubsection}{\bfseries}{\thesubsubsection}{10pt}{}
+
+% TOC styling (Fedora Magazine-style: blue bold heading + hrule, bold sections,
+% dotted leaders for subsections only)
+\usepackage{tocloft}
+\renewcommand{\cfttoctitlefont}{\color{blue}\Large\bfseries}
+\renewcommand{\cftaftertoctitle}{\par\nobreak\vspace{0.3ex}\noindent\rule{\linewidth}{0.4pt}\par\nobreak}
+\renewcommand{\cftsecfont}{\bfseries}
+\renewcommand{\cftsecpagefont}{\bfseries}
+\renewcommand{\cftsecleader}{\hfill}
+\cftsetindents{section}{0pt}{0pt}
+\renewcommand{\cftsubsecfont}{\normalfont}
+\renewcommand{\cftsubsecpagefont}{\normalfont}
+\cftsetindents{subsection}{1.5em}{0pt}
 
 % Disjoint union symbols
 \makeatletter
@@ -1500,9 +1516,18 @@ End
 \index_command default
 \float_placement H
 \float_alignment center
-\paperfontsize 12
+\paperfontsize 11
 \spacing onehalf
 \use_hyperref true
+\pdf_bookmarks false
+\pdf_bookmarksnumbered false
+\pdf_bookmarksopen false
+\pdf_breaklinks false
+\pdf_pdfborder false
+\pdf_colorlinks false
+\pdf_backref false
+\pdf_pdfusetitle true
+\pdf_quoted_options "linkbordercolor={1 0 0}, urlbordercolor={0 0 1}, citebordercolor={0 0 0}, pdfborderstyle={/S/U/W 1}"
 \papersize a4paper
 \use_geometry true
 \use_package amsmath 1
@@ -1758,6 +1783,9 @@ ENDLYX
 \origin unavailable
 \textclass article
 \begin_preamble
+% Safety: define \texorpdfstring if hyperref isn't loaded (harmless otherwise)
+\providecommand{\texorpdfstring}[2]{#1}
+
 % Display equation spacing
 \AtBeginDocument{\setlength\abovedisplayskip{6pt}}
 \AtBeginDocument{\setlength\belowdisplayskip{6pt}}
@@ -1779,9 +1807,22 @@ ENDLYX
 
 % Section formatting
 \usepackage{titlesec}
-\titleformat{\section}{\fontsize{20}{20}\bfseries}{\thesection}{10pt}{}
-\titleformat{\subsection}{\fontsize{15}{15}\bfseries}{\thesubsection}{10pt}{}
+\titleformat{\section}{\fontsize{17}{20}\bfseries}{\thesection}{10pt}{}
+\titleformat{\subsection}{\fontsize{13}{16}\bfseries}{\thesubsection}{10pt}{}
 \titleformat{\subsubsection}{\bfseries}{\thesubsubsection}{10pt}{}
+
+% TOC styling (Fedora Magazine-style: blue bold heading + hrule, bold sections,
+% dotted leaders for subsections only)
+\usepackage{tocloft}
+\renewcommand{\cfttoctitlefont}{\color{blue}\Large\bfseries}
+\renewcommand{\cftaftertoctitle}{\par\nobreak\vspace{0.3ex}\noindent\rule{\linewidth}{0.4pt}\par\nobreak}
+\renewcommand{\cftsecfont}{\bfseries}
+\renewcommand{\cftsecpagefont}{\bfseries}
+\renewcommand{\cftsecleader}{\hfill}
+\cftsetindents{section}{0pt}{0pt}
+\renewcommand{\cftsubsecfont}{\normalfont}
+\renewcommand{\cftsubsecpagefont}{\normalfont}
+\cftsetindents{subsection}{1.5em}{0pt}
 
 % Disjoint union symbols
 \makeatletter
@@ -1828,9 +1869,18 @@ theorems-ams
 \index_command default
 \float_placement H
 \float_alignment center
-\paperfontsize 12
+\paperfontsize 11
 \spacing onehalf
 \use_hyperref true
+\pdf_bookmarks false
+\pdf_bookmarksnumbered false
+\pdf_bookmarksopen false
+\pdf_breaklinks false
+\pdf_pdfborder false
+\pdf_colorlinks false
+\pdf_backref false
+\pdf_pdfusetitle true
+\pdf_quoted_options "linkbordercolor={1 0 0}, urlbordercolor={0 0 1}, citebordercolor={0 0 0}, pdfborderstyle={/S/U/W 1}"
 \papersize a4paper
 \use_geometry true
 \use_package amsmath 1
