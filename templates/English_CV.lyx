@@ -1,0 +1,779 @@
+#LyX 2.5 created this file. For more info see https://www.lyx.org/
+\lyxformat 643
+\begin_document
+\begin_header
+\save_transient_properties true
+\origin unavailable
+\textclass article
+\begin_preamble
+\frenchspacing
+\usepackage{amsmath}
+\newcommand{\ø}{\raisebox{.3ex}{\tiny$\; \bullet \;$}}
+\renewcommand{\arraystretch}{1.25}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\chead{\textit{Your Name \(\cdot\) Curriculum Vitae}}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\usepackage{mathpazo}
+% Added by lyx2lyx
+\setlength{\parskip}{\medskipamount}
+\setlength{\parindent}{0pt}
+\end_preamble
+\use_default_options false
+\maintain_unincluded_children no
+\language american
+\language_package default
+\inputencoding auto-legacy
+\fontencoding auto
+\font_roman "default" "default"
+\font_sans "default" "default"
+\font_typewriter "default" "default"
+\font_math "auto" "auto"
+\font_default_family default
+\use_non_tex_fonts false
+\font_sc false
+\font_roman_osf false
+\font_sans_osf false
+\font_typewriter_osf false
+\font_sf_scale 100 100
+\font_tt_scale 100 100
+\use_microtype false
+\use_dash_ligatures true
+\graphics default
+\default_output_format default
+\output_sync 0
+\bibtex_command default
+\index_command default
+\paperfontsize 11
+\spacing single
+\use_hyperref true
+\pdf_title "English CV"
+\pdf_author ""
+\pdf_subject ""
+\pdf_keywords ""
+\papersize letter
+\use_geometry true
+\use_package amsmath 1
+\use_package amssymb 2
+\use_package cancel 1
+\use_package esint 0
+\use_package mathdots 0
+\use_package mathtools 1
+\use_package mhchem 0
+\use_package stackrel 1
+\use_package stmaryrd 1
+\use_package undertilde 1
+\cite_engine basic
+\cite_engine_type default
+\biblio_style plain
+\use_bibtopic false
+\use_indices false
+\paperorientation portrait
+\suppress_date false
+\justification default
+\crossref_package prettyref
+\use_formatted_ref 0
+\use_minted 0
+\use_lineno 0
+\backgroundcolor none
+\fontcolor none
+\notefontcolor lightgray
+\boxbgcolor red
+\table_border_color default
+\table_odd_row_color default
+\table_even_row_color default
+\table_alt_row_colors_start 1
+\index Index
+\shortcut idx
+\color #008000
+\end_index
+\leftmargin 0.75in
+\topmargin 0.6in
+\rightmargin 0.75in
+\bottommargin 0.6in
+\secnumdepth 3
+\tocdepth 3
+\paragraph_separation indent
+\paragraph_indentation default
+\is_math_indent 0
+\math_numbering_side default
+\quotes_style english
+\dynamic_quotes 0
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+\tablestyle default
+\tracking_changes false
+\output_changes false
+\change_bars false
+\postpone_fragile_content false
+\html_math_output 0
+\html_css_as_file 0
+\html_be_strict false
+\docbook_table_output 0
+\docbook_mathml_prefix 1
+\docbook_mathml_version 0
+\end_header
+
+\begin_body
+
+\begin_layout Standard
+\align center
+
+\size large
+\noun on
+your name
+\noun default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\emph on
+Department of Mathematics
+\begin_inset Newline newline
+\end_inset
+
+Nowhere University 
+\begin_inset Newline newline
+\end_inset
+
+City,
+ State 00000-1111 USA
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace 13pt
+\end_inset
+
+
+\series bold
+Education
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+
+\noun on
+1976 university of
+\noun default
+ 
+\noun on
+someplace
+\noun default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\emph on
+Doctor of Philosophy in Mathematics,
+ April 1976
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+
+\noun on
+1971 someplace else university
+\noun default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\emph on
+Bachelor of Arts in Mathematics,
+ June 1971
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Academic Positions
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1997–98 Resident Fellow,
+ An Institute
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1993– Professor of Mathematics,
+ Nowhere University
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1991–92 Visiting Fellow,
+ University of Someplace
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1984–85 Visiting Fellow,
+ University of Someplace
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1983–92 Associate Professor of Mathematics,
+ Nowhere University
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1976–82 Assistant Professor of Mathematics,
+ Nowhere University
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1971–75 Teaching Assistant,
+ University of Someplace
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+1970 Teaching Assistant,
+ National Science Foundation Mathematics Program,
+ University of Couldbeanywhere
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Research Interests
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+\begin_inset space ~
+\end_inset
+
+ Math stuff generally.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+\begin_inset space ~
+\end_inset
+
+ Numbers and all that.
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Research Projects:
+ Current and Planned
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+\begin_inset space ~
+\end_inset
+
+ Prime numbers
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+\begin_inset space ~
+\end_inset
+
+ Not so prime numbers
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Research Submissions
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2006 
+\begin_inset Quotes eld
+\end_inset
+
+Why I Love Primes,
+\begin_inset Quotes erd
+\end_inset
+
+ 
+\emph on
+Archive for History of Prime Numbers,
+
+\emph default
+ under review.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2006 
+\begin_inset Quotes eld
+\end_inset
+
+It's Been a Prime Life:
+ My Story,
+\begin_inset Quotes erd
+\end_inset
+
+ 
+\emph on
+Studies in History and Philosophy of Primes,
+
+\emph default
+ under review.
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Research Publications
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2006 
+\begin_inset Quotes eld
+\end_inset
+
+Higher Primes,
+ Like 7,
+\begin_inset Quotes erd
+\end_inset
+
+ 
+\emph on
+Unbelievable Mathematica,
+
+\emph default
+ to appear.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2006 
+\begin_inset Quotes eld
+\end_inset
+
+The Prime Number 5,
+\begin_inset Quotes erd
+\end_inset
+
+ 
+\emph on
+Could Not be Worse
+\emph default
+ 
+\emph on
+Mathematics,
+
+\emph default
+ to appear.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2006 
+\begin_inset Quotes eld
+\end_inset
+
+The Prime Number 3,
+\begin_inset Quotes erd
+\end_inset
+
+ 
+\emph on
+Archive of Even Worse Mathematics
+\emph default
+ 60 (2006),
+ 157–207.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2004 
+\begin_inset Quotes eld
+\end_inset
+
+The Prime Number 2,
+\begin_inset Quotes erd
+\end_inset
+
+ 
+\emph on
+Journal of Not So Good Mathematics
+\emph default
+ 58 (2004),
+ 283–321.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+1976 
+\begin_inset Quotes eld
+\end_inset
+
+The First Prime Numbers,
+\begin_inset Quotes erd
+\end_inset
+
+ Doctoral Dissertation,
+ University of Someplace,
+ April,
+ 1976.
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Book Reviews
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2001 Here's a book review.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2000 And another one.
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Major Invited Talks
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+1997 Talk Number 4.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+1993 Talk Number 3.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+1992 Talk Number 2.
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+1991 Talk Number 1.
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Honors and Awards
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+2000 Invited to be the 2001–2002 Daft Lecturer at the University of Overthere
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+2000 Nowhere University Excellence in Teaching Award,
+ June 2000.
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Service
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+\begin_inset space ~
+\end_inset
+
+ Reviewer for 
+\emph on
+Journal of Abstruse Generalizations,
+
+\emph default
+ 
+\emph on
+Archive for the True but Trivial.
+\end_layout
+
+\begin_layout Standard
+
+\series bold
+Affiliations
+\series default
+
+\begin_inset Newline newline
+\end_inset
+
+
+\begin_inset CommandInset line
+LatexCommand rule
+offset "0.5ex"
+width "100line%"
+height "1pt"
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset VSpace -8pt
+\end_inset
+
+
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring MMMMM
+\begin_inset space ~
+\end_inset
+
+ Mathematical Association of America
+\end_layout
+
+\begin_layout Labeling
+\labelwidthstring 00.00.0000
+\begin_inset space ~
+\end_inset
+
+ American Mathematical Society
+\end_layout
+
+\end_body
+\end_document

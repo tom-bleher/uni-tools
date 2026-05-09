@@ -1,6 +1,6 @@
 # lyx-he
 
-Single-script installer for [LyX](https://www.lyx.org/) with full **Hebrew RTL** and **XeLaTeX** support on macOS.
+One-command installer for [LyX](https://www.lyx.org/) with full **Hebrew RTL** and **XeLaTeX** support on macOS.
 Based on the [Madlyx guide](https://mkali56.wixsite.com/madlyx) by Michael Kali.
 
 <p align="center">
@@ -13,16 +13,13 @@ Based on the [Madlyx guide](https://mkali56.wixsite.com/madlyx) by Michael Kali.
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tom-bleher/lyx-he/main/install.sh)"
 ```
 
-One command. Idempotent — safe to re-run. Already-installed components are skipped, existing configs are backed up.
+One command. Safe to re-run: already-installed components are skipped, generated files are compared before replacement, and existing LyX config is backed up before overwrite.
 
 > **Requires macOS** (Apple Silicon or Intel). Homebrew is set up automatically if needed.
 
 ```bash
 # Install all without prompting
 curl -fsSL https://raw.githubusercontent.com/tom-bleher/lyx-he/main/install.sh | bash -s -- --force
-
-# Preview what would be installed
-curl -fsSL https://raw.githubusercontent.com/tom-bleher/lyx-he/main/install.sh | bash -s -- --dry-run
 ```
 
 <details>
@@ -31,7 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/tom-bleher/lyx-he/main/install.sh |
 ```bash
 git clone https://github.com/tom-bleher/lyx-he.git
 cd lyx-he
-./install.sh              # or --force, --dry-run, --uninstall, --help
+./install.sh              # or --force, --uninstall, --help
 ```
 
 </details>
@@ -48,7 +45,7 @@ cd lyx-he
 - XeLaTeX output with polyglossia, bidi, and automatic Hebrew/Latin font switching
 - **F12** / **Shift+F12** for Hebrew/English toggle, **Cmd+E/I** for emphasis
 - Math auto-completion, OpenType math (STIX Two), hyperref cross-references
-- 6 document templates (article, solutions, CV) in Hebrew and English
+- 5 document templates (article, solutions, CV) plus Hebrew defaults for new files
 
 <p align="center">
   <img src="screenshots/component-picker.png" alt="Interactive component picker" width="570">
@@ -61,6 +58,8 @@ cd lyx-he
 ## Templates
 
 Open from **File > New from Template** in LyX.
+
+When installed with the one-line command, template files are downloaded from this repo. When installed from a clone, local files under `templates/` are copied.
 
 <table>
 <tr>
@@ -90,6 +89,8 @@ Open from **File > New from Template** in LyX.
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tom-bleher/lyx-he/main/install.sh)" -- --uninstall
 ```
+
+Uninstall removes only files recorded as managed by `lyx-he`. Existing LyX config backups are restored when available; untracked user files are left alone.
 
 ## Troubleshooting
 

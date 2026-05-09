@@ -75,8 +75,8 @@ run_with_spinner() {
         printf '\n' >&2
     fi
 
-    wait "$_bg_cmd_pid"
-    local rc=$?
+    local rc=0
+    wait "$_bg_cmd_pid" || rc=$?
     _bg_cmd_pid=""
     log "Exit code: $rc"
     if [ "$rc" -ne 0 ]; then
@@ -254,7 +254,6 @@ usage() {
     echo -e "  ${BOLD}Options:${NC}"
     echo -e "    ${CYAN}(none)${NC}           Interactive component picker ${DIM}(default)${NC}"
     echo -e "    ${CYAN}--force, -f${NC}      Install all components without prompting"
-    echo -e "    ${CYAN}--dry-run${NC}        Show what would be installed without doing anything"
     echo -e "    ${CYAN}--uninstall${NC}      Interactively select components to remove"
     echo -e "    ${CYAN}--help, -h${NC}       Show this help message"
     echo ""
@@ -262,29 +261,56 @@ usage() {
     echo -e "    curl -fsSL ${url} | bash -s -- --force"
     echo -e "    /bin/bash -c \"\$(curl -fsSL ${url})\" -- --uninstall"
     echo ""
-    echo -e "  ${DIM}The script is idempotent — already-installed components are skipped.${NC}"
+    echo -e "  ${DIM}Already-installed components are skipped; existing LyX files are backed up before overwrite.${NC}"
     echo ""
 }
 
 # ── Detect LyX config directory ──────────────────────
+lyx_version_gt() {
+    local a="${1##*/LyX-}"
+    local b="${2##*/LyX-}"
+    local IFS=.
+    local av=()
+    local bv=()
+    local i ai bi
+
+    read -r -a av <<< "$a"
+    read -r -a bv <<< "$b"
+
+    for i in 0 1 2; do
+        ai="${av[i]:-0}"; bi="${bv[i]:-0}"
+        [[ "$ai" =~ ^[0-9]+$ ]] || ai=0
+        [[ "$bi" =~ ^[0-9]+$ ]] || bi=0
+        (( ai > bi )) && return 0
+        (( ai < bi )) && return 1
+    done
+    return 1
+}
+
 detect_lyx_dir() {
-    local latest=""
-    latest=$(printf '%s\n' "$HOME/Library/Application Support"/LyX-* | sort -V | tail -1)
-    if [ -d "$latest" ]; then
-        LYX_DIR="$latest"
-    else
-        LYX_DIR="$HOME/Library/Application Support/LyX-2.5"
-    fi
+    local dirs=()
+    local d latest=""
+
+    shopt -s nullglob
+    dirs=("$HOME/Library/Application Support"/LyX-*)
+    shopt -u nullglob
+
+    for d in "${dirs[@]}"; do
+        [ -d "$d" ] || continue
+        if [ -z "$latest" ] || lyx_version_gt "$d" "$latest"; then
+            latest="$d"
+        fi
+    done
+
+    LYX_DIR="${latest:-$HOME/Library/Application Support/LyX-2.5}"
 }
 
 # ── Flags ────────────────────────────────────────────
 FORCE=false
 UNINSTALL=false
-DRY_RUN=false
 case "${1:-}" in
     --help|-h)      usage; exit 0 ;;
     --force|-f)     FORCE=true ;;
-    --dry-run)      DRY_RUN=true ;;
     --uninstall)    UNINSTALL=true ;;
     "") ;;
     *) fail "Unknown flag: $1"; echo ""; usage; exit 1 ;;
@@ -303,6 +329,156 @@ TEMPLATE_FILES=(
     templates/English_CV.lyx
 )
 
+REPO_RAW_BASE="${LYX_HE_RAW_BASE:-https://raw.githubusercontent.com/tom-bleher/lyx-he/main}"
+SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
+SCRIPT_DIR=""
+if [ -f "$SCRIPT_PATH" ]; then
+    SCRIPT_DIR=$(cd "$(dirname "$SCRIPT_PATH")" && pwd -P)
+fi
+
+MANIFEST_FILE="$HOME/.lyx-he-manifest"
+
+manifest_add() {
+    local type="$1"
+    local value="$2"
+    local line="$type"$'\t'"$value"
+
+    if [ ! -f "$MANIFEST_FILE" ] || ! grep -Fqx "$line" "$MANIFEST_FILE"; then
+        printf '%s\n' "$line" >> "$MANIFEST_FILE"
+    fi
+}
+
+manifest_has() {
+    local type="$1"
+    local value="$2"
+    local line="$type"$'\t'"$value"
+
+    [ -f "$MANIFEST_FILE" ] && grep -Fqx "$line" "$MANIFEST_FILE"
+}
+
+manifest_has_type() {
+    local type="$1"
+    local found_type value
+
+    [ -f "$MANIFEST_FILE" ] || return 1
+    while IFS=$'\t' read -r found_type value; do
+        [ "$found_type" = "$type" ] && return 0
+    done < "$MANIFEST_FILE"
+    return 1
+}
+
+manifest_remove() {
+    local type="$1"
+    local value="$2"
+    local line="$type"$'\t'"$value"
+    local tmp existing
+
+    [ -f "$MANIFEST_FILE" ] || return 0
+    tmp=$(mktemp)
+    while IFS= read -r existing; do
+        [ "$existing" = "$line" ] || printf '%s\n' "$existing"
+    done < "$MANIFEST_FILE" > "$tmp"
+    mv "$tmp" "$MANIFEST_FILE"
+}
+
+prune_backups() {
+    local base="$1"
+    local backups=()
+    local remove_count i
+
+    shopt -s nullglob
+    backups=("$base".bak.*)
+    shopt -u nullglob
+
+    [ "${#backups[@]}" -le 3 ] && return 0
+    remove_count=$(( ${#backups[@]} - 3 ))
+    for ((i = 0; i < remove_count; i++)); do
+        rm -f "${backups[i]}"
+    done
+}
+
+backup_file() {
+    local path="$1"
+    local backup
+
+    [ -f "$path" ] || return 0
+    backup="$path.bak.$(date +%s)"
+    cp "$path" "$backup" || return 1
+    prune_backups "$path" || return 1
+}
+
+confirm_overwrite() {
+    local label="$1"; shift
+    local existing=()
+    local path answer
+
+    for path in "$@"; do
+        [ -e "$path" ] && existing+=("$path")
+    done
+    [ "${#existing[@]}" -eq 0 ] && return 0
+    $FORCE && return 0
+
+    if [ ! -t 0 ]; then
+        fail "$label already exists. Re-run with --force to overwrite non-interactively."
+        exit 1
+    fi
+
+    echo ""
+    warn "$label already exists. Existing files will be backed up before overwrite."
+    echo -ne "  Overwrite $label? [y/N] "
+    read -r answer
+    case "$answer" in
+        [yY]|[yY][eE][sS]) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+install_file_from_temp() {
+    local tmp="$1"
+    local dest="$2"
+
+    mkdir -p "$(dirname "$dest")" || return 2
+    if [ -f "$dest" ] && cmp -s "$tmp" "$dest"; then
+        rm -f "$tmp" || return 2
+        manifest_add file "$dest" || return 2
+        return 1
+    fi
+    backup_file "$dest" || return 2
+    mv "$tmp" "$dest" || return 2
+    manifest_add file "$dest" || return 2
+    return 0
+}
+
+install_template_file() {
+    local rel="$1"
+    local dest="$LYX_DIR/$rel"
+    local tmp
+
+    tmp=$(mktemp)
+    if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/$rel" ]; then
+        cp "$SCRIPT_DIR/$rel" "$tmp" || { rm -f "$tmp"; return 2; }
+    else
+        if ! run_with_spinner "Downloading $rel" curl -fsSL -o "$tmp" "$REPO_RAW_BASE/$rel"; then
+            rm -f "$tmp"
+            return 2
+        fi
+    fi
+
+    install_file_from_temp "$tmp" "$dest"
+}
+
+report_install_status() {
+    local rc="$1"
+    local changed_msg="$2"
+    local same_msg="$3"
+
+    case "$rc" in
+        0) ok "$changed_msg" ;;
+        1) ok "$same_msg" ;;
+        *) fail "$changed_msg failed"; exit "$rc" ;;
+    esac
+}
+
 # ── Uninstall flow ───────────────────────────────────
 if $UNINSTALL; then
     detect_lyx_dir
@@ -312,79 +488,74 @@ if $UNINSTALL; then
     TUI_CHECKED=()
     UNINSTALL_ACTIONS=()
 
-    # Config files
-    _has_config=false
-    for f in preferences bind/user.bind; do
-        [ -f "$LYX_DIR/$f" ] && _has_config=true
+    _config_backups=()
+    shopt -s nullglob
+    _config_backups=("$LYX_DIR"/preferences.bak.* "$LYX_DIR"/bind/user.bind.bak.*)
+    shopt -u nullglob
+
+    _has_managed_config=false
+    for f in preferences bind/user.bind templates/defaults.lyx; do
+        manifest_has file "$LYX_DIR/$f" && _has_managed_config=true
     done
-    if $_has_config; then
-        TUI_ITEMS+=("LyX preferences & keybindings")
+    if $_has_managed_config || [ "${#_config_backups[@]}" -gt 0 ]; then
+        TUI_ITEMS+=("LyX preferences & keybindings (restore backups if available)")
         TUI_CHECKED+=(1)
         UNINSTALL_ACTIONS+=("config")
     fi
 
-    # Templates
-    _has_templates=false
+    _has_managed_templates=false
     for f in "${TEMPLATE_FILES[@]}"; do
-        [ -f "$LYX_DIR/$f" ] && _has_templates=true
+        [ "$f" = "templates/defaults.lyx" ] && continue
+        manifest_has file "$LYX_DIR/$f" && _has_managed_templates=true
     done
-    if $_has_templates; then
-        TUI_ITEMS+=("LyX templates (articles, CV, letter, homework)")
+    if $_has_managed_templates; then
+        TUI_ITEMS+=("Managed LyX templates")
         TUI_CHECKED+=(1)
         UNINSTALL_ACTIONS+=("templates")
     fi
 
-    # Backups
-    _backup_count=0
-    for bak in "$LYX_DIR"/preferences.bak.* "$LYX_DIR"/bind/user.bind.bak.*; do
-        [ -f "$bak" ] && _backup_count=$((_backup_count + 1))
-    done
-    if [ "$_backup_count" -gt 0 ]; then
-        TUI_ITEMS+=("Configuration backups ($_backup_count files)")
-        TUI_CHECKED+=(1)
-        UNINSTALL_ACTIONS+=("backups")
+    _CULMUS_MANAGED=()
+    if [ -f "$MANIFEST_FILE" ]; then
+        while IFS=$'\t' read -r _type _value; do
+            [ "$_type" = "font" ] && [ -f "$_value" ] && _CULMUS_MANAGED+=("$_value")
+        done < "$MANIFEST_FILE"
     fi
-
-    # Culmus fonts
-    if fc-list 2>/dev/null | grep -qi "David CLM"; then
-        TUI_ITEMS+=("Culmus Hebrew fonts (~/Library/Fonts/*CLM*)")
+    if [ "${#_CULMUS_MANAGED[@]}" -gt 0 ]; then
+        TUI_ITEMS+=("Managed Culmus Hebrew fonts (${#_CULMUS_MANAGED[@]} files)")
         TUI_CHECKED+=(0)
         UNINSTALL_ACTIONS+=("culmus")
     fi
 
-    # Noto fonts
     _NOTO_INSTALLED=()
     for cask in font-noto-sans-hebrew font-noto-serif-hebrew font-noto-rashi-hebrew; do
-        brew list --cask "$cask" &>/dev/null && _NOTO_INSTALLED+=("$cask")
+        manifest_has cask "$cask" && brew list --cask "$cask" &>/dev/null && _NOTO_INSTALLED+=("$cask")
     done
-    if [ ${#_NOTO_INSTALLED[@]} -gt 0 ]; then
-        TUI_ITEMS+=("Noto Hebrew fonts (${#_NOTO_INSTALLED[@]} casks)")
+    if [ "${#_NOTO_INSTALLED[@]}" -gt 0 ]; then
+        TUI_ITEMS+=("Managed Noto Hebrew fonts (${#_NOTO_INSTALLED[@]} casks)")
         TUI_CHECKED+=(0)
         UNINSTALL_ACTIONS+=("noto")
     fi
 
-    # LyX application
-    if [ -d "/Applications/LyX.app" ]; then
-        TUI_ITEMS+=("LyX application")
+    if manifest_has cask lyx && brew list --cask lyx &>/dev/null; then
+        TUI_ITEMS+=("Managed LyX application")
         TUI_CHECKED+=(0)
         UNINSTALL_ACTIONS+=("lyx")
     fi
 
-    # MacTeX
-    if [ -f /Library/TeX/texbin/xelatex ]; then
-        TUI_ITEMS+=("MacTeX (~6 GB)")
+    if manifest_has cask mactex && brew list --cask mactex &>/dev/null; then
+        TUI_ITEMS+=("Managed MacTeX (~6 GB)")
         TUI_CHECKED+=(0)
         UNINSTALL_ACTIONS+=("mactex")
     fi
 
     if [ ${#TUI_ITEMS[@]} -eq 0 ]; then
-        info "Nothing found to uninstall."
+        info "Nothing managed by lyx-he found to uninstall."
+        [ -f "$MANIFEST_FILE" ] || info "No manifest found at $MANIFEST_FILE; leaving untracked files alone."
         exit 0
     fi
 
     tui_checkbox "Select components to remove:"
 
-    # Check if anything selected
     _any=false
     for ((i = 0; i < ${#TUI_ITEMS[@]}; i++)); do
         [ "${TUI_CHECKED[i]}" = "1" ] && _any=true
@@ -394,15 +565,14 @@ if $UNINSTALL; then
         exit 0
     fi
 
-    # Show what will be removed and confirm
     echo ""
-    echo -e "  ${BOLD}The following will be removed:${NC}"
+    echo -e "  ${BOLD}The following will be removed or restored:${NC}"
     for ((i = 0; i < ${#TUI_ITEMS[@]}; i++)); do
         [ "${TUI_CHECKED[i]}" = "1" ] && echo -e "    ${RED}▸${NC} ${TUI_ITEMS[i]}"
     done
     echo ""
     if [ -t 0 ]; then
-        echo -ne "  ${YELLOW}This cannot be undone.${NC} Continue? [y/N] "
+        echo -ne "  ${YELLOW}Continue?${NC} [y/N] "
         read -r _confirm
         case "$_confirm" in
             [yY]|[yY][eE][sS]) ;;
@@ -410,45 +580,73 @@ if $UNINSTALL; then
         esac
     fi
 
-    # Prompt for sudo once if MacTeX uninstall is selected
     _uninstall_needs_sudo=false
     for ((i = 0; i < ${#UNINSTALL_ACTIONS[@]}; i++)); do
         [ "${TUI_CHECKED[i]}" = "1" ] && [ "${UNINSTALL_ACTIONS[i]}" = "mactex" ] && _uninstall_needs_sudo=true
     done
     if $_uninstall_needs_sudo; then sudo_init; fi
 
-    # Execute removals
+    restore_or_remove_config_file() {
+        local rel="$1"
+        local path="$LYX_DIR/$rel"
+        local backups=()
+        local latest_backup=""
+
+        shopt -s nullglob
+        backups=("$path".bak.*)
+        shopt -u nullglob
+
+        if [ "${#backups[@]}" -gt 0 ]; then
+            latest_backup="${backups[$(( ${#backups[@]} - 1 ))]}"
+            mkdir -p "$(dirname "$path")"
+            cp "$latest_backup" "$path"
+            ok "Restored $rel from $(basename "$latest_backup")"
+            manifest_remove file "$path"
+        elif manifest_has file "$path"; then
+            [ -f "$path" ] && rm "$path" && ok "Removed managed $rel"
+            manifest_remove file "$path"
+        elif [ -f "$path" ]; then
+            warn "Left untracked $rel in place"
+        fi
+    }
+
     for ((i = 0; i < ${#UNINSTALL_ACTIONS[@]}; i++)); do
         [ "${TUI_CHECKED[i]}" = "1" ] || continue
         case "${UNINSTALL_ACTIONS[i]}" in
             config)
-                for f in preferences bind/user.bind; do
-                    [ -f "$LYX_DIR/$f" ] && rm "$LYX_DIR/$f" && ok "Removed $f"
-                done
+                restore_or_remove_config_file preferences
+                restore_or_remove_config_file bind/user.bind
+                restore_or_remove_config_file templates/defaults.lyx
                 ;;
             templates)
                 for f in "${TEMPLATE_FILES[@]}"; do
-                    [ -f "$LYX_DIR/$f" ] && rm "$LYX_DIR/$f" && ok "Removed $f"
+                    [ "$f" = "templates/defaults.lyx" ] && continue
+                    if manifest_has file "$LYX_DIR/$f"; then
+                        [ -f "$LYX_DIR/$f" ] && rm "$LYX_DIR/$f" && ok "Removed $f"
+                        manifest_remove file "$LYX_DIR/$f"
+                    fi
                 done
                 ;;
-            backups)
-                rm -f "$LYX_DIR"/preferences.bak.* "$LYX_DIR"/bind/user.bind.bak.* 2>/dev/null || true
-                ok "Removed $_backup_count backup files"
-                ;;
             culmus)
-                rm -f "$HOME"/Library/Fonts/*CLM*.otf "$HOME"/Library/Fonts/*CLM*.ttf 2>/dev/null || true
-                ok "Removed Culmus fonts"
+                for font in "${_CULMUS_MANAGED[@]}"; do
+                    [ -f "$font" ] && rm "$font" && ok "Removed $(basename "$font")"
+                    manifest_remove font "$font"
+                done
                 ;;
             noto)
-                if brew uninstall --cask "${_NOTO_INSTALLED[@]}" 2>/dev/null; then
-                    ok "Removed Noto Hebrew fonts"
-                else
-                    warn "Failed to remove some Noto fonts"
-                fi
+                for cask in "${_NOTO_INSTALLED[@]}"; do
+                    if brew uninstall --cask "$cask" 2>/dev/null; then
+                        ok "Removed $cask"
+                        manifest_remove cask "$cask"
+                    else
+                        warn "Failed to remove $cask"
+                    fi
+                done
                 ;;
             lyx)
                 if brew uninstall --cask lyx 2>/dev/null; then
                     ok "Removed LyX"
+                    manifest_remove cask lyx
                 else
                     warn "Failed to remove LyX via Homebrew"
                 fi
@@ -456,12 +654,17 @@ if $UNINSTALL; then
             mactex)
                 if brew uninstall --cask mactex 2>/dev/null; then
                     ok "Removed MacTeX"
+                    manifest_remove cask mactex
                 else
                     warn "Failed to remove MacTeX via Homebrew"
                 fi
                 ;;
         esac
     done
+
+    if [ -f "$MANIFEST_FILE" ] && [ ! -s "$MANIFEST_FILE" ]; then
+        rm -f "$MANIFEST_FILE"
+    fi
 
     echo ""
     ok "Uninstall complete."
@@ -732,6 +935,10 @@ TUI_ITEMS+=("$_label"); TUI_CHECKED+=(1); INSTALL_ACTIONS+=("templates")
 if $FORCE; then
     info "Force mode — installing all components"
 else
+    if [ ! -t 0 ] || [ ! -t 1 ]; then
+        fail "Interactive install requires a terminal. Re-run with --force for non-interactive install."
+        exit 1
+    fi
     tui_checkbox "Select components to install:"
 fi
 
@@ -793,16 +1000,6 @@ else
     echo -e "  ${DIM}  Disk space: ${_avail_gb:-?} GB available${NC}"
 fi
 
-# ── Dry-run exit ─────────────────────────────────────
-
-if $DRY_RUN; then
-    echo ""
-    info "Dry run — no changes were made."
-    echo -e "  ${DIM}Run without --dry-run to install.${NC}"
-    echo ""
-    exit 0
-fi
-
 # ── Confirm ──────────────────────────────────────────
 
 if ! $FORCE && [ -t 0 ]; then
@@ -838,6 +1035,7 @@ if is_selected "mactex"; then
         run_with_spinner "Installing MacTeX" brew install --cask mactex
         eval "$(/usr/libexec/path_helper)" 2>/dev/null
         if [ -f /Library/TeX/texbin/xelatex ]; then
+            manifest_add cask mactex
             ok "MacTeX installed ${DIM}($(fmt_elapsed))${NC}"
         else
             warn "MacTeX installed but xelatex not on PATH. Restart your terminal."
@@ -856,6 +1054,7 @@ if is_selected "lyx"; then
         # If this fails in the future, download directly from https://www.lyx.org/Download
         run_with_spinner "Installing LyX" brew install --cask lyx
         if [ -d "/Applications/LyX.app" ]; then
+            manifest_add cask lyx
             ok "LyX installed ${DIM}($(fmt_elapsed))${NC}"
         else
             fail "LyX installation failed. Download manually from https://www.lyx.org/Download"
@@ -878,7 +1077,8 @@ if is_selected "culmus"; then
 
         CULMUS_SHA256="6daed104481007752a76905000e71c0093c591c8ef3017d1b18222c277fc52e3"
         if ! echo "$CULMUS_SHA256  $CULMUS_TMP/culmus.tar.gz" | shasum -a 256 -c - >/dev/null 2>&1; then
-            warn "Checksum mismatch — verifying archive contents instead"
+            fail "Culmus checksum mismatch — refusing to install unverified archive"
+            exit 1
         fi
 
         # Verify the archive is a valid tarball containing Culmus fonts
@@ -891,11 +1091,15 @@ if is_selected "culmus"; then
 
         tar xzf "$CULMUS_TMP/culmus.tar.gz" -C "$CULMUS_TMP"
         mkdir -p "$HOME/Library/Fonts"
-        cp "$CULMUS_TMP"/culmus-"$CULMUS_VERSION"/*CLM*.otf "$HOME/Library/Fonts/"
-        cp "$CULMUS_TMP"/culmus-"$CULMUS_VERSION"/*CLM*.ttf "$HOME/Library/Fonts/" 2>/dev/null || true  # some versions lack .ttf
+        FONT_COUNT=0
+        for font in "$CULMUS_TMP"/culmus-"$CULMUS_VERSION"/*CLM*.otf "$CULMUS_TMP"/culmus-"$CULMUS_VERSION"/*CLM*.ttf; do
+            [ -f "$font" ] || continue
+            cp "$font" "$HOME/Library/Fonts/"
+            manifest_add font "$HOME/Library/Fonts/$(basename "$font")"
+            FONT_COUNT=$((FONT_COUNT + 1))
+        done
         rm -rf "$CULMUS_TMP"
 
-        FONT_COUNT=$(find "$HOME/Library/Fonts" -name '*CLM*' 2>/dev/null | wc -l | tr -d ' ')
         ok "Installed $FONT_COUNT Culmus font files ${DIM}($(fmt_elapsed))${NC}"
     fi
 fi
@@ -908,6 +1112,7 @@ if is_selected "noto"; then
         ok "Noto Hebrew fonts already installed — skipped"
     else
         if run_with_spinner "Installing Noto Hebrew fonts" brew install --cask "${NOTO_MISSING[@]}"; then
+            for cask in "${NOTO_MISSING[@]}"; do manifest_add cask "$cask"; done
             ok "Noto Hebrew fonts installed ${DIM}($(fmt_elapsed))${NC}"
         else
             fail "Noto Hebrew font installation failed"
@@ -916,148 +1121,22 @@ if is_selected "noto"; then
     fi
 fi
 
-# ── Shared helper for LyX templates ─────────────────
-
-write_lyx_template() {
-    local file="$1"
-    local body="$2"
-    local extra_preamble="${3:-}"
-    cat > "$file" << 'PREAMBLE'
-#LyX 2.5 created this file. For more info see https://www.lyx.org/
-\lyxformat 643
-\begin_document
-\begin_header
-\save_transient_properties true
-\origin unavailable
-\textclass article
-\begin_preamble
-% Hebrew fonts — David CLM with explicit italic/bold mapping
-\newfontfamily\hebrewfont[Script=Hebrew,Ligatures=TeX,
-  ItalicFont={David CLM Medium Italic},
-  BoldFont={David CLM Bold},
-  BoldItalicFont={David CLM Bold Italic}]{David CLM}
-\newfontfamily\hebrewfonttt[Script=Hebrew]{Miriam Mono CLM}
-\newfontfamily\hebrewfontsf[Script=Hebrew]{Simple CLM}
-
-% OpenType math font for proper math typography with XeTeX
-\usepackage{unicode-math}
-PREAMBLE
-    [ -n "$extra_preamble" ] && printf '\n%s\n' "$extra_preamble" >> "$file"
-    cat >> "$file" << 'HEADER'
-\end_preamble
-\use_default_options true
-\begin_modules
-theorems-ams
-theorems-ams-extended
-eqs-within-sections
-\end_modules
-\maintain_unincluded_children no
-\language hebrew
-\language_package default
-\inputencoding auto-legacy
-\fontencoding auto
-\font_roman "default" "default"
-\font_sans "default" "default"
-\font_typewriter "default" "default"
-\font_math "auto" "auto"
-\font_default_family default
-\use_non_tex_fonts true
-\font_sc false
-\font_roman_osf false
-\font_sans_osf false
-\font_typewriter_osf false
-\font_sf_scale 100 100
-\font_tt_scale 100 100
-\use_microtype true
-\use_dash_ligatures true
-\graphics xetex
-\default_output_format pdf4
-\output_sync 0
-\bibtex_command default
-\index_command default
-\float_placement H
-\float_alignment center
-\paperfontsize 12
-\spacing single
-\use_hyperref true
-\papersize a4paper
-\use_geometry true
-\topmargin 2cm
-\bottommargin 2cm
-\leftmargin 2cm
-\rightmargin 2cm
-\use_package amsmath 1
-\use_package amssymb 1
-\use_package cancel 1
-\use_package esint 1
-\use_package mathdots 1
-\use_package mathtools 1
-\use_package mhchem 1
-\use_package stackrel 1
-\use_package stmaryrd 1
-\use_package undertilde 1
-\cite_engine basic
-\cite_engine_type default
-\biblio_style plain
-\use_bibtopic false
-\use_indices false
-\paperorientation portrait
-\suppress_date false
-\justification true
-\crossref_package prettyref
-\use_formatted_ref 1
-\use_minted 0
-\use_lineno 0
-\index Index
-\shortcut idx
-\color #008000
-\end_index
-\secnumdepth 3
-\tocdepth 3
-\paragraph_separation indent
-\paragraph_indentation default
-\is_math_indent 0
-\math_numbering_side default
-\quotes_style english
-\dynamic_quotes 0
-\papercolumns 1
-\papersides 1
-\paperpagestyle default
-\tablestyle default
-\tracking_changes false
-\output_changes false
-\change_bars false
-\postpone_fragile_content true
-\html_math_output 0
-\html_css_as_file 0
-\html_be_strict false
-\docbook_table_output 0
-\docbook_mathml_prefix 1
-\docbook_mathml_version 0
-\end_header
-HEADER
-    # NOTE: \use_hyperref is true so LyX's native hyperref handles clickable
-    # cross-refs — XeTeX supports Unicode bookmarks natively, no manual load.
-    # The theorems-ams modules are known to have potential RTL issues with
-    # amsthm — if theorem numbering appears reversed, wrap with \L{}.
-    echo "" >> "$file"
-    printf '%s\n' "$body" >> "$file"
-}
-
 # ── Install: LyX configuration ──────────────────────
 
 if is_selected "config"; then
     step "LyX preferences & keybindings"
     mkdir -p "$LYX_DIR/bind" "$LYX_DIR/templates"
 
-    # Back up existing files
-    for f in preferences bind/user.bind; do
-        [ -f "$LYX_DIR/$f" ] && cp "$LYX_DIR/$f" "$LYX_DIR/$f.bak.$(date +%s)" 2>/dev/null
-        ls -t "$LYX_DIR/$f".bak.* 2>/dev/null | tail -n +4 | xargs rm -f 2>/dev/null || true
-    done
+    CONFIG_TARGETS=(
+        "$LYX_DIR/preferences"
+        "$LYX_DIR/bind/user.bind"
+        "$LYX_DIR/templates/defaults.lyx"
+    )
 
-    # Preferences — only non-default settings (matches LyX 2.4.4 on macOS)
-    cat > "$LYX_DIR/preferences" << 'EOF'
+    if confirm_overwrite "LyX preferences & keybindings" "${CONFIG_TARGETS[@]}"; then
+        _prefs_tmp=$(mktemp)
+        # Preferences — only non-default settings (matches LyX 2.4/2.5 on macOS)
+        cat > "$_prefs_tmp" << 'EOF'
 Format 38
 
 \bind_file "user"
@@ -1113,10 +1192,16 @@ Format 38
 \completion_minlength 3
 EOF
 
-    ok "Preferences written"
+        if install_file_from_temp "$_prefs_tmp" "$LYX_DIR/preferences"; then
+            _install_rc=0
+        else
+            _install_rc=$?
+        fi
+        report_install_status "$_install_rc" "Preferences written" "Preferences already up to date"
 
-    # Keybindings — F12 for Hebrew (Madlyx guide, page 16)
-    cat > "$LYX_DIR/bind/user.bind" << 'EOF'
+        _bind_tmp=$(mktemp)
+        # Keybindings — F12 for Hebrew (Madlyx guide, page 16)
+        cat > "$_bind_tmp" << 'EOF'
 ## user.bind — Hebrew keybindings (Madlyx guide)
 ## Keep OS keyboard on English. Use F12 to toggle Hebrew inside LyX.
 
@@ -1135,19 +1220,26 @@ Format 5
 \bind "C-M-i" "inset-toggle"
 EOF
 
-    ok "Keybindings written (F12 = Hebrew, Shift+F12 = English)"
+        if install_file_from_temp "$_bind_tmp" "$LYX_DIR/bind/user.bind"; then
+            _install_rc=0
+        else
+            _install_rc=$?
+        fi
+        report_install_status "$_install_rc" \
+            "Keybindings written (F12 = Hebrew, Shift+F12 = English)" \
+            "Keybindings already up to date"
 
-    # defaults.lyx — used by Cmd+N for new documents
-    write_lyx_template "$LYX_DIR/templates/defaults.lyx" '\begin_body
-
-\begin_layout Standard
-
-\end_layout
-
-\end_body
-\end_document'
-
-    ok "defaults.lyx created (Cmd+N defaults to Hebrew RTL)"
+        if install_template_file "templates/defaults.lyx"; then
+            _install_rc=0
+        else
+            _install_rc=$?
+        fi
+        report_install_status "$_install_rc" \
+            "defaults.lyx created (Cmd+N defaults to Hebrew RTL)" \
+            "defaults.lyx already up to date"
+    else
+        ok "Skipped LyX preferences & keybindings"
+    fi
 fi
 
 # ── Install: Document templates ─────────────────────
@@ -1156,1743 +1248,29 @@ if is_selected "templates"; then
     step "Document templates"
     mkdir -p "$LYX_DIR/templates"
 
-    info "Writing document templates..."
-
-    # Hebrew_Article.lyx — template with Title/Author/Date/Abstract/TOC/Section
-    write_lyx_template "$LYX_DIR/templates/Hebrew_Article.lyx" '\begin_body
-
-\begin_layout Title
-כותרת
-\end_layout
-
-\begin_layout Author
-שם המחבר
-\end_layout
-
-\begin_layout Date
-\begin_inset ERT
-status open
-
-\begin_layout Plain Layout
-
-
-\backslash
-today
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Abstract
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset CommandInset toc
-LatexCommand tableofcontents
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset Newpage newpage
-\end_inset
-
-
-\end_layout
-
-\begin_layout Section
-מבוא
-\end_layout
-
-\begin_layout Standard
-
-\end_layout
-
-\end_body
-\end_document'
-
-    ok "Hebrew_Article.lyx template created"
-
-    # English_Article.lyx — default Overleaf-style English article
-    cat > "$LYX_DIR/templates/English_Article.lyx" << 'ENDLYX'
-#LyX 2.5 created this file. For more info see https://www.lyx.org/
-\lyxformat 643
-\begin_document
-\begin_header
-\save_transient_properties true
-\origin unavailable
-\textclass article
-\use_default_options true
-\maintain_unincluded_children no
-\language english
-\language_package default
-\inputencoding auto-legacy
-\fontencoding auto
-\font_roman "default" "default"
-\font_sans "default" "default"
-\font_typewriter "default" "default"
-\font_math "auto" "auto"
-\font_default_family default
-\use_non_tex_fonts false
-\font_sc false
-\font_roman_osf false
-\font_sans_osf false
-\font_typewriter_osf false
-\font_sf_scale 100 100
-\font_tt_scale 100 100
-\use_microtype true
-\use_dash_ligatures true
-\graphics default
-\default_output_format pdf2
-\output_sync 0
-\bibtex_command default
-\index_command default
-\float_placement H
-\float_alignment center
-\paperfontsize 12
-\spacing single
-\use_hyperref true
-\pdf_title "English Article"
-\pdf_author ""
-\pdf_subject ""
-\pdf_keywords ""
-\papersize a4paper
-\use_geometry true
-\topmargin 2cm
-\bottommargin 2cm
-\leftmargin 2cm
-\rightmargin 2cm
-\use_package amsmath 1
-\use_package amssymb 1
-\use_package cancel 1
-\use_package esint 1
-\use_package mathdots 1
-\use_package mathtools 1
-\use_package mhchem 1
-\use_package stackrel 1
-\use_package stmaryrd 1
-\use_package undertilde 1
-\cite_engine basic
-\cite_engine_type default
-\biblio_style plain
-\use_bibtopic false
-\use_indices false
-\paperorientation portrait
-\suppress_date false
-\justification true
-\crossref_package prettyref
-\use_formatted_ref 1
-\use_minted 0
-\use_lineno 0
-\index Index
-\shortcut idx
-\color #008000
-\end_index
-\secnumdepth 3
-\tocdepth 3
-\paragraph_separation indent
-\paragraph_indentation default
-\is_math_indent 0
-\math_numbering_side default
-\quotes_style english
-\dynamic_quotes 0
-\papercolumns 1
-\papersides 1
-\paperpagestyle default
-\tablestyle default
-\tracking_changes false
-\output_changes false
-\change_bars false
-\postpone_fragile_content true
-\html_math_output 0
-\html_css_as_file 0
-\html_be_strict false
-\docbook_table_output 0
-\docbook_mathml_prefix 1
-\docbook_mathml_version 0
-\end_header
-
-\begin_body
-
-\begin_layout Title
-Title
-\end_layout
-
-\begin_layout Author
-Author Name
-\end_layout
-
-\begin_layout Date
-\begin_inset ERT
-status open
-
-\begin_layout Plain Layout
-
-
-\backslash
-today
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Abstract
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset CommandInset toc
-LatexCommand tableofcontents
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset Newpage newpage
-\end_inset
-
-
-\end_layout
-
-\begin_layout Section
-Introduction
-\end_layout
-
-\begin_layout Standard
-
-\end_layout
-
-\end_body
-\end_document
-ENDLYX
-
-    ok "English_Article.lyx template created"
-
-    # Hebrew_Solutions.lyx — homework solutions with title box, TOC, questions
-    cat > "$LYX_DIR/templates/Hebrew_Solutions.lyx" << 'ENDLYX'
-#LyX 2.5 created this file. For more info see https://www.lyx.org/
-\lyxformat 643
-\begin_document
-\begin_header
-\save_transient_properties true
-\origin unavailable
-\textclass article
-\begin_preamble
-% Hebrew fonts — David CLM with explicit italic/bold mapping
-\newfontfamily\hebrewfont[Script=Hebrew,Ligatures=TeX,
-  ItalicFont={David CLM Medium Italic},
-  BoldFont={David CLM Bold},
-  BoldItalicFont={David CLM Bold Italic}]{David CLM}
-\newfontfamily\hebrewfonttt[Script=Hebrew]{Miriam Mono CLM}
-\newfontfamily\hebrewfontsf[Script=Hebrew]{Simple CLM}
-
-% OpenType math font for proper math typography with XeTeX
-\usepackage{unicode-math}
-
-% Safety: define \texorpdfstring if hyperref isn't loaded (harmless otherwise)
-\providecommand{\texorpdfstring}[2]{#1}
-
-% Display equation spacing
-\AtBeginDocument{\setlength\abovedisplayskip{6pt}}
-\AtBeginDocument{\setlength\belowdisplayskip{6pt}}
-\AtBeginDocument{\setlength\abovedisplayshortskip{6pt}}
-\AtBeginDocument{\setlength\belowdisplayshortskip{6pt}}
-
-% Footnoterule on the right side
-\AtBeginDocument{
-\renewcommand\footnoterule{%
-  \kern 3pt
-  \hbox to \textwidth{\hfill\vrule height 0.5pt width 0.4\textwidth}
-  \kern 4pt
-}}
-
-% Wider word spacing
-\spaceskip=1.3\fontdimen2\font plus 1\fontdimen3\font minus 1.5\fontdimen4\font
-
-% Pleasant LyX colors
-\usepackage{xcolor}
-\definecolor{blue}{RGB}{12,97,197}
-\definecolor{brown}{RGB}{154,58,0}
-\definecolor{green}{RGB}{0,128,40}
-\definecolor{orange}{RGB}{255,114,38}
-\definecolor{purple}{RGB}{94,53,177}
-\definecolor{red}{RGB}{235,16,16}
-
-% Solid black QED square (unicode-math provides \blacksquare)
-\renewcommand{\qedsymbol}{$\blacksquare$}
-
-% Section formatting
-\makeatletter
-\renewcommand*{\@seccntformat}[1]{\hspace{0.5cm}\csname the#1\endcsname\hspace{0.5cm}}
-\makeatother
-\usepackage{titlesec}
-\titleformat{\section}{\fontsize{17}{20}\bfseries}{\thesection}{10pt}{}
-\titleformat{\subsection}{\fontsize{13}{16}\bfseries}{\thesubsection}{10pt}{}
-\titleformat{\subsubsection}{\bfseries}{\thesubsubsection}{10pt}{}
-
-% TOC styling (Fedora Magazine-style: blue bold heading + hrule, bold sections,
-% dotted leaders for subsections only)
-\usepackage{tocloft}
-\renewcommand{\cfttoctitlefont}{\color{blue}\Large\bfseries}
-\renewcommand{\cftaftertoctitle}{\par\nobreak\vspace{0.3ex}\noindent\rule{\linewidth}{0.4pt}\par\nobreak}
-\renewcommand{\cftsecfont}{\bfseries}
-\renewcommand{\cftsecpagefont}{\bfseries}
-\renewcommand{\cftsecleader}{\hfill}
-\cftsetindents{section}{0pt}{0pt}
-\renewcommand{\cftsubsecfont}{\normalfont}
-\renewcommand{\cftsubsecpagefont}{\normalfont}
-\cftsetindents{subsection}{1.5em}{0pt}
-
-% Disjoint union symbols
-\makeatletter
-\def\moverlay{\mathpalette\mov@rlay}
-\def\mov@rlay#1#2{\leavevmode\vtop{%
-   \baselineskip\z@skip \lineskiplimit-\maxdimen
-   \ialign{\hfil$\m@th#1##$\hfil\cr#2\crcr}}}
-\newcommand{\charfusion}[3][\mathord]{
-    #1{\ifx#1\mathop\vphantom{#2}\fi
-        \mathpalette\mov@rlay{#2\cr#3}
-      }
-    \ifx#1\mathop\expandafter\displaylimits\fi}
-\makeatother
-\newcommand{\cupdot}{\charfusion[\mathbin]{\cup}{\cdot}}
-\newcommand{\bigcupdot}{\charfusion[\mathop]{\bigcup}{\cdot}}
-\end_preamble
-\use_default_options true
-\begin_modules
-theorems-ams
-\end_modules
-\maintain_unincluded_children no
-\begin_local_layout
-Style Section
-	Font
-	  Series     Medium
-	  Shape      Smallcaps
-	  Size       Larger
-	  Series     Bold
-	EndFont
-	TocLevel 1
-End
-Style Section*
-	Font
-	  Series     Medium
-	  Shape      Smallcaps
-	  Size       Larger
-	  Series     Bold
-	EndFont
-End
-\end_local_layout
-\language hebrew
-\language_package default
-\inputencoding auto-legacy
-\fontencoding auto
-\font_roman "default" "default"
-\font_sans "default" "default"
-\font_typewriter "default" "default"
-\font_math "auto" "auto"
-\font_default_family default
-\use_non_tex_fonts true
-\font_sc false
-\font_roman_osf false
-\font_sans_osf false
-\font_typewriter_osf false
-\font_sf_scale 100 100
-\font_tt_scale 100 100
-\use_microtype true
-\use_dash_ligatures true
-\graphics xetex
-\default_output_format pdf4
-\output_sync 0
-\bibtex_command default
-\index_command default
-\float_placement H
-\float_alignment center
-\paperfontsize 11
-\spacing onehalf
-\use_hyperref true
-\pdf_bookmarks false
-\pdf_bookmarksnumbered false
-\pdf_bookmarksopen false
-\pdf_breaklinks false
-\pdf_pdfborder false
-\pdf_colorlinks false
-\pdf_backref false
-\pdf_pdfusetitle true
-\pdf_quoted_options "linkbordercolor={1 0 0}, urlbordercolor={0 0 1}, citebordercolor={0 0 0}, pdfborderstyle={/S/U/W 1}"
-\papersize a4paper
-\use_geometry true
-\use_package amsmath 1
-\use_package amssymb 1
-\use_package cancel 1
-\use_package esint 1
-\use_package mathdots 1
-\use_package mathtools 1
-\use_package mhchem 1
-\use_package stackrel 1
-\use_package stmaryrd 1
-\use_package undertilde 1
-\cite_engine basic
-\cite_engine_type default
-\biblio_style plain
-\use_bibtopic false
-\use_indices false
-\paperorientation portrait
-\suppress_date false
-\justification true
-\crossref_package prettyref
-\use_formatted_ref 1
-\use_minted 0
-\use_lineno 0
-\index Index
-\shortcut idx
-\color #008000
-\end_index
-\leftmargin 1.5cm
-\topmargin 1.5cm
-\rightmargin 1.5cm
-\bottommargin 2cm
-\headheight 0cm
-\headsep 0cm
-\footskip 1.5cm
-\secnumdepth -2
-\tocdepth 2
-\paragraph_separation indent
-\paragraph_indentation 0bp
-\is_math_indent 0
-\math_numbering_side default
-\quotes_style english
-\dynamic_quotes 0
-\papercolumns 1
-\papersides 1
-\paperpagestyle default
-\tablestyle default
-\tracking_changes false
-\output_changes false
-\change_bars false
-\postpone_fragile_content true
-\html_math_output 0
-\html_css_as_file 0
-\html_be_strict false
-\docbook_table_output 0
-\docbook_mathml_prefix 1
-\docbook_mathml_version 0
-\end_header
-
-\begin_body
-
-\begin_layout Standard
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset Box Doublebox
-position "t"
-hor_pos "c"
-has_inner_box 1
-inner_pos "c"
-use_parbox 0
-use_makebox 0
-width "100col%"
-special "none"
-height "1in"
-height_special "totalheight"
-thickness "0.4pt"
-separation "20pt"
-shadowsize "4pt"
-framecolor "black"
-backgroundcolor "none"
-status open
-
-\begin_layout Plain Layout
-\begin_inset space \space{}
-\end_inset
-
-
-\end_layout
-
-\begin_layout Plain Layout
-\paragraph_spacing double
-\align center
-
-\series bold
-\size huge
-שם הקורס
-\end_layout
-
-\begin_layout Plain Layout
-\paragraph_spacing double
-\align center
-
-\series bold
-\size huge
-פתרון לתרגיל
-\end_layout
-
-\begin_layout Plain Layout
-\align center
-שם: | ת"ז:
-\end_layout
-
-\begin_layout Plain Layout
-\align center
-\begin_inset ERT
-status open
-
-\begin_layout Plain Layout
-
-\backslash
-today
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Plain Layout
-\begin_inset space \space{}
-\end_inset
-
-
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset CommandInset toc
-LatexCommand tableofcontents
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset Newpage newpage
-\end_inset
-
-
-\end_layout
-
-\begin_layout Section
-שאלה 1
-\end_layout
-
-\begin_layout Subsection
-(א)
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-\size large
-צ״ל:
-\end_layout
-
-\begin_layout Subsection
-(ב)
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-\size large
-צ״ל:
-\end_layout
-
-\begin_layout Subsection
-(ג)
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-\size large
-צ״ל:
-\end_layout
-
-\begin_layout Standard
-\begin_inset Newpage newpage
-\end_inset
-
-
-\end_layout
-
-\begin_layout Section
-שאלה 2
-\end_layout
-
-\begin_layout Subsection
-(א)
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-\size large
-צ״ל:
-\end_layout
-
-\begin_layout Subsection
-(ב)
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-\size large
-צ״ל:
-\end_layout
-
-\begin_layout Subsection
-(ג)
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-\size large
-צ״ל:
-\end_layout
-
-\end_body
-\end_document
-ENDLYX
-
-    ok "Hebrew_Solutions.lyx template created"
-
-    # English_Solutions.lyx — English version of homework solutions template
-    cat > "$LYX_DIR/templates/English_Solutions.lyx" << 'ENDLYX'
-#LyX 2.5 created this file. For more info see https://www.lyx.org/
-\lyxformat 643
-\begin_document
-\begin_header
-\save_transient_properties true
-\origin unavailable
-\textclass article
-\begin_preamble
-% Safety: define \texorpdfstring if hyperref isn't loaded (harmless otherwise)
-\providecommand{\texorpdfstring}[2]{#1}
-
-% Display equation spacing
-\AtBeginDocument{\setlength\abovedisplayskip{6pt}}
-\AtBeginDocument{\setlength\belowdisplayskip{6pt}}
-\AtBeginDocument{\setlength\abovedisplayshortskip{6pt}}
-\AtBeginDocument{\setlength\belowdisplayshortskip{6pt}}
-
-% Custom colors
-\usepackage{xcolor}
-\definecolor{blue}{RGB}{12,97,197}
-\definecolor{brown}{RGB}{154,58,0}
-\definecolor{green}{RGB}{0,128,40}
-\definecolor{orange}{RGB}{255,114,38}
-\definecolor{purple}{RGB}{94,53,177}
-\definecolor{red}{RGB}{235,16,16}
-
-% Solid black QED square
-\usepackage{amssymb}
-\renewcommand{\qedsymbol}{$\blacksquare$}
-
-% Section formatting
-\usepackage{titlesec}
-\titleformat{\section}{\fontsize{17}{20}\bfseries}{\thesection}{10pt}{}
-\titleformat{\subsection}{\fontsize{13}{16}\bfseries}{\thesubsection}{10pt}{}
-\titleformat{\subsubsection}{\bfseries}{\thesubsubsection}{10pt}{}
-
-% TOC styling (Fedora Magazine-style: blue bold heading + hrule, bold sections,
-% dotted leaders for subsections only)
-\usepackage{tocloft}
-\renewcommand{\cfttoctitlefont}{\color{blue}\Large\bfseries}
-\renewcommand{\cftaftertoctitle}{\par\nobreak\vspace{0.3ex}\noindent\rule{\linewidth}{0.4pt}\par\nobreak}
-\renewcommand{\cftsecfont}{\bfseries}
-\renewcommand{\cftsecpagefont}{\bfseries}
-\renewcommand{\cftsecleader}{\hfill}
-\cftsetindents{section}{0pt}{0pt}
-\renewcommand{\cftsubsecfont}{\normalfont}
-\renewcommand{\cftsubsecpagefont}{\normalfont}
-\cftsetindents{subsection}{1.5em}{0pt}
-
-% Disjoint union symbols
-\makeatletter
-\def\moverlay{\mathpalette\mov@rlay}
-\def\mov@rlay#1#2{\leavevmode\vtop{%
-   \baselineskip\z@skip \lineskiplimit-\maxdimen
-   \ialign{\hfil$\m@th#1##$\hfil\cr#2\crcr}}}
-\newcommand{\charfusion}[3][\mathord]{
-    #1{\ifx#1\mathop\vphantom{#2}\fi
-        \mathpalette\mov@rlay{#2\cr#3}
-      }
-    \ifx#1\mathop\expandafter\displaylimits\fi}
-\makeatother
-\newcommand{\cupdot}{\charfusion[\mathbin]{\cup}{\cdot}}
-\newcommand{\bigcupdot}{\charfusion[\mathop]{\bigcup}{\cdot}}
-\end_preamble
-\use_default_options true
-\begin_modules
-theorems-ams
-\end_modules
-\maintain_unincluded_children no
-\language english
-\language_package default
-\inputencoding auto-legacy
-\fontencoding auto
-\font_roman "default" "default"
-\font_sans "default" "default"
-\font_typewriter "default" "default"
-\font_math "auto" "auto"
-\font_default_family default
-\use_non_tex_fonts false
-\font_sc false
-\font_roman_osf false
-\font_sans_osf false
-\font_typewriter_osf false
-\font_sf_scale 100 100
-\font_tt_scale 100 100
-\use_microtype true
-\use_dash_ligatures true
-\graphics default
-\default_output_format pdf2
-\output_sync 0
-\bibtex_command default
-\index_command default
-\float_placement H
-\float_alignment center
-\paperfontsize 11
-\spacing onehalf
-\use_hyperref true
-\pdf_bookmarks false
-\pdf_bookmarksnumbered false
-\pdf_bookmarksopen false
-\pdf_breaklinks false
-\pdf_pdfborder false
-\pdf_colorlinks false
-\pdf_backref false
-\pdf_pdfusetitle true
-\pdf_quoted_options "linkbordercolor={1 0 0}, urlbordercolor={0 0 1}, citebordercolor={0 0 0}, pdfborderstyle={/S/U/W 1}"
-\papersize a4paper
-\use_geometry true
-\use_package amsmath 1
-\use_package amssymb 1
-\use_package cancel 1
-\use_package esint 1
-\use_package mathdots 1
-\use_package mathtools 1
-\use_package mhchem 1
-\use_package stackrel 1
-\use_package stmaryrd 1
-\use_package undertilde 1
-\cite_engine basic
-\cite_engine_type default
-\biblio_style plain
-\use_bibtopic false
-\use_indices false
-\paperorientation portrait
-\suppress_date false
-\justification true
-\crossref_package prettyref
-\use_formatted_ref 1
-\use_minted 0
-\use_lineno 0
-\index Index
-\shortcut idx
-\color #008000
-\end_index
-\leftmargin 1.5cm
-\topmargin 1.5cm
-\rightmargin 1.5cm
-\bottommargin 2cm
-\headheight 0cm
-\headsep 0cm
-\footskip 1.5cm
-\secnumdepth -2
-\tocdepth 2
-\paragraph_separation indent
-\paragraph_indentation 0bp
-\is_math_indent 0
-\math_numbering_side default
-\quotes_style english
-\dynamic_quotes 0
-\papercolumns 1
-\papersides 1
-\paperpagestyle default
-\tablestyle default
-\tracking_changes false
-\output_changes false
-\change_bars false
-\postpone_fragile_content true
-\html_math_output 0
-\html_css_as_file 0
-\html_be_strict false
-\docbook_table_output 0
-\docbook_mathml_prefix 1
-\docbook_mathml_version 0
-\end_header
-
-\begin_body
-
-\begin_layout Standard
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset Box Doublebox
-position "t"
-hor_pos "c"
-has_inner_box 1
-inner_pos "c"
-use_parbox 0
-use_makebox 0
-width "100col%"
-special "none"
-height "1in"
-height_special "totalheight"
-thickness "0.4pt"
-separation "20pt"
-shadowsize "4pt"
-framecolor "black"
-backgroundcolor "none"
-status open
-
-\begin_layout Plain Layout
-\begin_inset space \space{}
-\end_inset
-
-
-\end_layout
-
-\begin_layout Plain Layout
-\paragraph_spacing double
-\align center
-
-\series bold
-\size huge
-Course Name
-\end_layout
-
-\begin_layout Plain Layout
-\paragraph_spacing double
-\align center
-
-\series bold
-\size huge
-Solution to Exercise
-\end_layout
-
-\begin_layout Plain Layout
-\align center
-Name: | ID:
-\end_layout
-
-\begin_layout Plain Layout
-\align center
-\begin_inset ERT
-status open
-
-\begin_layout Plain Layout
-
-\backslash
-today
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Plain Layout
-\begin_inset space \space{}
-\end_inset
-
-
-\end_layout
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset CommandInset toc
-LatexCommand tableofcontents
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset Newpage newpage
-\end_inset
-
-
-\end_layout
-
-\begin_layout Section
-Question 1
-\end_layout
-
-\begin_layout Subsection
-(a)
-\end_layout
-
-\begin_layout Standard
-
-\end_layout
-
-\begin_layout Subsection
-(b)
-\end_layout
-
-\begin_layout Standard
-
-\end_layout
-
-\begin_layout Subsection
-(c)
-\end_layout
-
-\begin_layout Standard
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset Newpage newpage
-\end_inset
-
-
-\end_layout
-
-\begin_layout Section
-Question 2
-\end_layout
-
-\begin_layout Subsection
-(a)
-\end_layout
-
-\begin_layout Standard
-
-\end_layout
-
-\begin_layout Subsection
-(b)
-\end_layout
-
-\begin_layout Standard
-
-\end_layout
-
-\begin_layout Subsection
-(c)
-\end_layout
-
-\begin_layout Standard
-
-\end_layout
-
-\end_body
-\end_document
-ENDLYX
-
-    ok "English_Solutions.lyx template created"
-
-    # English_CV.lyx — academic CV based on Bruce Pourciau's template
-    cat > "$LYX_DIR/templates/English_CV.lyx" << 'ENDOFCV'
-#LyX 2.5 created this file. For more info see https://www.lyx.org/
-\lyxformat 643
-\begin_document
-\begin_header
-\save_transient_properties true
-\origin unavailable
-\textclass article
-\begin_preamble
-\frenchspacing
-\usepackage{amsmath}
-\newcommand{\ø}{\raisebox{.3ex}{\tiny$\; \bullet \;$}}
-\renewcommand{\arraystretch}{1.25}
-\usepackage{fancyhdr}
-\pagestyle{fancy}
-\fancyhf{}
-\chead{\textit{Your Name \(\cdot\) Curriculum Vitae}}
-\cfoot{\thepage}
-\renewcommand{\headrulewidth}{0pt}
-\usepackage{mathpazo}
-% Added by lyx2lyx
-\setlength{\parskip}{\medskipamount}
-\setlength{\parindent}{0pt}
-\end_preamble
-\use_default_options false
-\maintain_unincluded_children no
-\language american
-\language_package default
-\inputencoding auto-legacy
-\fontencoding auto
-\font_roman "default" "default"
-\font_sans "default" "default"
-\font_typewriter "default" "default"
-\font_math "auto" "auto"
-\font_default_family default
-\use_non_tex_fonts false
-\font_sc false
-\font_roman_osf false
-\font_sans_osf false
-\font_typewriter_osf false
-\font_sf_scale 100 100
-\font_tt_scale 100 100
-\use_microtype false
-\use_dash_ligatures true
-\graphics default
-\default_output_format default
-\output_sync 0
-\bibtex_command default
-\index_command default
-\paperfontsize 11
-\spacing single
-\use_hyperref true
-\pdf_title "English CV"
-\pdf_author ""
-\pdf_subject ""
-\pdf_keywords ""
-\papersize letter
-\use_geometry true
-\use_package amsmath 1
-\use_package amssymb 2
-\use_package cancel 1
-\use_package esint 0
-\use_package mathdots 0
-\use_package mathtools 1
-\use_package mhchem 0
-\use_package stackrel 1
-\use_package stmaryrd 1
-\use_package undertilde 1
-\cite_engine basic
-\cite_engine_type default
-\biblio_style plain
-\use_bibtopic false
-\use_indices false
-\paperorientation portrait
-\suppress_date false
-\justification default
-\crossref_package prettyref
-\use_formatted_ref 0
-\use_minted 0
-\use_lineno 0
-\backgroundcolor none
-\fontcolor none
-\notefontcolor lightgray
-\boxbgcolor red
-\table_border_color default
-\table_odd_row_color default
-\table_even_row_color default
-\table_alt_row_colors_start 1
-\index Index
-\shortcut idx
-\color #008000
-\end_index
-\leftmargin 0.75in
-\topmargin 0.6in
-\rightmargin 0.75in
-\bottommargin 0.6in
-\secnumdepth 3
-\tocdepth 3
-\paragraph_separation indent
-\paragraph_indentation default
-\is_math_indent 0
-\math_numbering_side default
-\quotes_style english
-\dynamic_quotes 0
-\papercolumns 1
-\papersides 1
-\paperpagestyle default
-\tablestyle default
-\tracking_changes false
-\output_changes false
-\change_bars false
-\postpone_fragile_content false
-\html_math_output 0
-\html_css_as_file 0
-\html_be_strict false
-\docbook_table_output 0
-\docbook_mathml_prefix 1
-\docbook_mathml_version 0
-\end_header
-
-\begin_body
-
-\begin_layout Standard
-\align center
-
-\size large
-\noun on
-your name
-\noun default
-
-\begin_inset Newline newline
-\end_inset
-
-
-\emph on
-Department of Mathematics
-\begin_inset Newline newline
-\end_inset
-
-Nowhere University 
-\begin_inset Newline newline
-\end_inset
-
-City,
- State 00000-1111 USA
-\end_layout
-
-\begin_layout Standard
-\begin_inset VSpace 13pt
-\end_inset
-
-
-\series bold
-Education
-\series default
-
-\begin_inset Newline newline
-\end_inset
-
-
-\begin_inset CommandInset line
-LatexCommand rule
-offset "0.5ex"
-width "100line%"
-height "1pt"
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset VSpace -8pt
-\end_inset
-
-
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring 00.00.0000
-
-\noun on
-1976 university of
-\noun default
- 
-\noun on
-someplace
-\noun default
-
-\begin_inset Newline newline
-\end_inset
-
-
-\emph on
-Doctor of Philosophy in Mathematics,
- April 1976
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring 00.00.0000
-
-\noun on
-1971 someplace else university
-\noun default
-
-\begin_inset Newline newline
-\end_inset
-
-
-\emph on
-Bachelor of Arts in Mathematics,
- June 1971
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-Academic Positions
-\series default
-
-\begin_inset Newline newline
-\end_inset
-
-
-\begin_inset CommandInset line
-LatexCommand rule
-offset "0.5ex"
-width "100line%"
-height "1pt"
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset VSpace -8pt
-\end_inset
-
-
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring 00.00.0000
-1997–98 Resident Fellow,
- An Institute
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring 00.00.0000
-1993– Professor of Mathematics,
- Nowhere University
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring 00.00.0000
-1991–92 Visiting Fellow,
- University of Someplace
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring 00.00.0000
-1984–85 Visiting Fellow,
- University of Someplace
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring 00.00.0000
-1983–92 Associate Professor of Mathematics,
- Nowhere University
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring 00.00.0000
-1976–82 Assistant Professor of Mathematics,
- Nowhere University
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring 00.00.0000
-1971–75 Teaching Assistant,
- University of Someplace
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring 00.00.0000
-1970 Teaching Assistant,
- National Science Foundation Mathematics Program,
- University of Couldbeanywhere
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-Research Interests
-\series default
-
-\begin_inset Newline newline
-\end_inset
-
-
-\begin_inset CommandInset line
-LatexCommand rule
-offset "0.5ex"
-width "100line%"
-height "1pt"
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset VSpace -8pt
-\end_inset
-
-
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-\begin_inset space ~
-\end_inset
-
- Math stuff generally.
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-\begin_inset space ~
-\end_inset
-
- Numbers and all that.
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-Research Projects:
- Current and Planned
-\series default
-
-\begin_inset Newline newline
-\end_inset
-
-
-\begin_inset CommandInset line
-LatexCommand rule
-offset "0.5ex"
-width "100line%"
-height "1pt"
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset VSpace -8pt
-\end_inset
-
-
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-\begin_inset space ~
-\end_inset
-
- Prime numbers
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-\begin_inset space ~
-\end_inset
-
- Not so prime numbers
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-Research Submissions
-\series default
-
-\begin_inset Newline newline
-\end_inset
-
-
-\begin_inset CommandInset line
-LatexCommand rule
-offset "0.5ex"
-width "100line%"
-height "1pt"
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset VSpace -8pt
-\end_inset
-
-
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-2006 
-\begin_inset Quotes eld
-\end_inset
-
-Why I Love Primes,
-\begin_inset Quotes erd
-\end_inset
-
- 
-\emph on
-Archive for History of Prime Numbers,
-
-\emph default
- under review.
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-2006 
-\begin_inset Quotes eld
-\end_inset
-
-It's Been a Prime Life:
- My Story,
-\begin_inset Quotes erd
-\end_inset
-
- 
-\emph on
-Studies in History and Philosophy of Primes,
-
-\emph default
- under review.
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-Research Publications
-\series default
-
-\begin_inset Newline newline
-\end_inset
-
-
-\begin_inset CommandInset line
-LatexCommand rule
-offset "0.5ex"
-width "100line%"
-height "1pt"
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset VSpace -8pt
-\end_inset
-
-
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-2006 
-\begin_inset Quotes eld
-\end_inset
-
-Higher Primes,
- Like 7,
-\begin_inset Quotes erd
-\end_inset
-
- 
-\emph on
-Unbelievable Mathematica,
-
-\emph default
- to appear.
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-2006 
-\begin_inset Quotes eld
-\end_inset
-
-The Prime Number 5,
-\begin_inset Quotes erd
-\end_inset
-
- 
-\emph on
-Could Not be Worse
-\emph default
- 
-\emph on
-Mathematics,
-
-\emph default
- to appear.
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-2006 
-\begin_inset Quotes eld
-\end_inset
-
-The Prime Number 3,
-\begin_inset Quotes erd
-\end_inset
-
- 
-\emph on
-Archive of Even Worse Mathematics
-\emph default
- 60 (2006),
- 157–207.
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-2004 
-\begin_inset Quotes eld
-\end_inset
-
-The Prime Number 2,
-\begin_inset Quotes erd
-\end_inset
-
- 
-\emph on
-Journal of Not So Good Mathematics
-\emph default
- 58 (2004),
- 283–321.
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-1976 
-\begin_inset Quotes eld
-\end_inset
-
-The First Prime Numbers,
-\begin_inset Quotes erd
-\end_inset
-
- Doctoral Dissertation,
- University of Someplace,
- April,
- 1976.
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-Book Reviews
-\series default
-
-\begin_inset Newline newline
-\end_inset
-
-
-\begin_inset CommandInset line
-LatexCommand rule
-offset "0.5ex"
-width "100line%"
-height "1pt"
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset VSpace -8pt
-\end_inset
-
-
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-2001 Here's a book review.
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-2000 And another one.
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-Major Invited Talks
-\series default
-
-\begin_inset Newline newline
-\end_inset
-
-
-\begin_inset CommandInset line
-LatexCommand rule
-offset "0.5ex"
-width "100line%"
-height "1pt"
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset VSpace -8pt
-\end_inset
-
-
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-1997 Talk Number 4.
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-1993 Talk Number 3.
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-1992 Talk Number 2.
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-1991 Talk Number 1.
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-Honors and Awards
-\series default
-
-\begin_inset Newline newline
-\end_inset
-
-
-\begin_inset CommandInset line
-LatexCommand rule
-offset "0.5ex"
-width "100line%"
-height "1pt"
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset VSpace -8pt
-\end_inset
-
-
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-2000 Invited to be the 2001–2002 Daft Lecturer at the University of Overthere
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring 00.00.0000
-2000 Nowhere University Excellence in Teaching Award,
- June 2000.
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-Service
-\series default
-
-\begin_inset Newline newline
-\end_inset
-
-
-\begin_inset CommandInset line
-LatexCommand rule
-offset "0.5ex"
-width "100line%"
-height "1pt"
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset VSpace -8pt
-\end_inset
-
-
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-\begin_inset space ~
-\end_inset
-
- Reviewer for 
-\emph on
-Journal of Abstruse Generalizations,
-
-\emph default
- 
-\emph on
-Archive for the True but Trivial.
-\end_layout
-
-\begin_layout Standard
-
-\series bold
-Affiliations
-\series default
-
-\begin_inset Newline newline
-\end_inset
-
-
-\begin_inset CommandInset line
-LatexCommand rule
-offset "0.5ex"
-width "100line%"
-height "1pt"
-
-\end_inset
-
-
-\end_layout
-
-\begin_layout Standard
-\begin_inset VSpace -8pt
-\end_inset
-
-
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring MMMMM
-\begin_inset space ~
-\end_inset
-
- Mathematical Association of America
-\end_layout
-
-\begin_layout Labeling
-\labelwidthstring 00.00.0000
-\begin_inset space ~
-\end_inset
-
- American Mathematical Society
-\end_layout
-
-\end_body
-\end_document
-ENDOFCV
-
-
-    ok "English_CV.lyx template created"
+    TEMPLATE_TARGETS=()
+    for f in "${TEMPLATE_FILES[@]}"; do
+        [ "$f" = "templates/defaults.lyx" ] && continue
+        TEMPLATE_TARGETS+=("$LYX_DIR/$f")
+    done
+
+    if ! confirm_overwrite "Document templates" "${TEMPLATE_TARGETS[@]}"; then
+        ok "Skipped document templates"
+    else
+        info "Writing document templates..."
+
+        for f in "${TEMPLATE_FILES[@]}"; do
+            [ "$f" = "templates/defaults.lyx" ] && continue
+            if install_template_file "$f"; then
+                _install_rc=0
+            else
+                _install_rc=$?
+            fi
+            report_install_status "$_install_rc" \
+                "$(basename "$f") template installed" \
+                "$(basename "$f") template already up to date"
+        done
+    fi
 fi
 
 # ── Run LyX Reconfigure ─────────────────────────────
@@ -2998,14 +1376,6 @@ if [ "${#_warnings[@]}" -eq 0 ]; then
 else
     ok "$_passed of $_checks checks passed"
     for w in "${_warnings[@]}"; do warn "$w"; done
-fi
-
-# ── Gatekeeper bypass ────────────────────────────────
-
-if [ -d "/Applications/LyX.app" ] && xattr -l /Applications/LyX.app 2>/dev/null | grep -q com.apple.quarantine; then
-    xattr -d com.apple.quarantine /Applications/LyX.app 2>/dev/null \
-        && ok "Cleared Gatekeeper quarantine on LyX.app" \
-        || true  # not critical
 fi
 
 # ── Total elapsed time ───────────────────────────────
